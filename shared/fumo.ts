@@ -1,0 +1,116 @@
+export type PrivacyMode = 'exact' | 'approx'
+export type PostStatus = 'pending' | 'approved' | 'rejected'
+export type UserRole = 'user' | 'admin'
+
+export type LatLng = {
+  lat: number
+  lng: number
+}
+
+export type AppProfile = {
+  id: string
+  username: string | null
+  avatarUrl: string | null
+  role: UserRole
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type CurrentViewer = {
+  userId: string
+  email: string | null
+  profile: AppProfile
+}
+
+export type GeocodeResult = {
+  displayName: string
+  placeName: string
+  lat: number
+  lng: number
+  countryName: string | null
+  regionName: string | null
+  cityName: string | null
+}
+
+export type PublicMapFeatureProperties = {
+  id: number
+  title: string
+  placeName: string | null
+  username: string
+  thumbUrl: string | null
+  privacyMode: PrivacyMode
+  capturedAt: string | null
+}
+
+export type PublicMapCollection = GeoJSON.FeatureCollection<
+  GeoJSON.Point,
+  PublicMapFeatureProperties
+>
+
+export type PublicPostDetail = {
+  id: number
+  title: string
+  body: string | null
+  imageUrl: string | null
+  thumbUrl: string | null
+  placeName: string | null
+  countryName: string | null
+  regionName: string | null
+  cityName: string | null
+  publicLocation: LatLng | null
+  privacyMode: PrivacyMode
+  capturedAt: string | null
+  createdAt: string | null
+  author: {
+    username: string
+    avatarUrl: string | null
+  }
+}
+
+export type AdminReviewPost = {
+  id: number
+  title: string
+  body: string | null
+  imageUrl: string | null
+  thumbUrl: string | null
+  placeName: string | null
+  countryName: string | null
+  regionName: string | null
+  cityName: string | null
+  exactLocation: LatLng | null
+  publicLocation: LatLng | null
+  privacyMode: PrivacyMode
+  capturedAt: string | null
+  createdAt: string | null
+  reviewNote: string | null
+  author: {
+    id: string
+    username: string
+    avatarUrl: string | null
+  }
+}
+
+export type SubmitPostPayload = {
+  title: string
+  body: string | null
+  imagePath: string
+  thumbPath: string | null
+  capturedAt: string | null
+  exactLocation: LatLng
+  publicLocation: LatLng
+  privacyMode: PrivacyMode
+  placeName: string
+  countryName: string | null
+  regionName: string | null
+  cityName: string | null
+}
+
+export const STORAGE_BUCKET = 'fumo'
+export const MAP_DEFAULT_STYLE_URL =
+  'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
+export const MAP_DEFAULT_CENTER: [number, number] = [116.397389, 39.908722]
+export const MAP_DEFAULT_ZOOM = 1.55
+export const MAP_THUMBNAIL_ZOOM = 5.8
+export const MAX_TITLE_LENGTH = 80
+export const MAX_BODY_LENGTH = 1000
+export const USERNAME_PATTERN = /^[a-zA-Z0-9_-]{3,24}$/
