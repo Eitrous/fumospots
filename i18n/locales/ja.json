@@ -108,6 +108,7 @@
   },
   "post": {
     "eyebrow": "投稿詳細",
+    "exitDetail": "詳細を閉じる",
     "loadingTitle": "投稿を読み込み中…",
     "loadingDescription": "右側に高解像度画像、公開位置、作者メモが表示されます。",
     "authorNote": "作者メモ",

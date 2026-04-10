@@ -108,6 +108,7 @@
   },
   "post": {
     "eyebrow": "投稿详情",
+    "exitDetail": "退出详情",
     "loadingTitle": "正在加载这条投稿…",
     "loadingDescription": "右侧会显示高清图片、公开位置和作者留言。",
     "authorNote": "作者留言",

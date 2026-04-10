@@ -1,0 +1,88 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - status [ref=e4]: Fumo Spots
+    - main [ref=e5]:
+      - complementary [ref=e6]:
+        - generic [ref=e7]:
+          - generic [ref=e8]:
+            - generic [ref=e9]:
+              - button "退出详情" [ref=e10] [cursor=pointer]:
+                - generic [ref=e12]: 退出详情
+              - generic [ref=e13]:
+                - button "切换到深色主题" [ref=e14] [cursor=pointer]:
+                  - generic [ref=e16]: 切换到深色主题
+                - button "语言" [ref=e18] [cursor=pointer]:
+                  - generic [ref=e20]: 语言
+                - button "登录" [ref=e21] [cursor=pointer]:
+                  - generic [ref=e23]: 登录
+                - button "投稿" [ref=e24] [cursor=pointer]:
+                  - generic [ref=e26]: 投稿
+            - paragraph [ref=e28]: 地图工作台
+          - generic [ref=e30]:
+            - img "她在丛中笑" [ref=e33]
+            - generic [ref=e34]:
+              - generic [ref=e35]: 投稿详情
+              - heading "她在丛中笑" [level=2] [ref=e36]
+              - generic [ref=e37]:
+                - paragraph [ref=e38]:
+                  - generic [ref=e40]: "@gstrenko"
+                - paragraph [ref=e41]:
+                  - generic [ref=e43]: 人大图书馆前的小树林
+                - paragraph [ref=e44]:
+                  - generic [ref=e46]: 公开精确坐标
+                - paragraph [ref=e47]:
+                  - generic [ref=e49]: 2026年4月5日 10:27
+              - generic [ref=e50]:
+                - generic [ref=e51]:
+                  - strong [ref=e52]: 作者留言
+                  - paragraph [ref=e53]: 清明假期太短了啊啊啊啊啊啊啊
+                - generic [ref=e54]:
+                  - strong [ref=e55]: 地点信息
+                  - paragraph [ref=e56]: 人大图书馆前的小树林
+                  - paragraph [ref=e57]: 海淀区 / 中国
+                  - paragraph [ref=e58]: 公开坐标：39.97010, 116.30975
+                  - paragraph [ref=e59]: 拍摄时间：2026年4月5日 10:27
+              - generic [ref=e60]:
+                - strong [ref=e61]: 公开位置预览
+                - generic [ref=e63]:
+                  - region "Map" [ref=e64]
+                  - generic:
+                    - generic [ref=e65]:
+                      - button "Zoom in" [ref=e66] [cursor=pointer]
+                      - button "Zoom out" [ref=e68] [cursor=pointer]
+                    - group [ref=e70]:
+                      - generic "Toggle attribution" [ref=e71] [cursor=pointer]
+                      - generic [ref=e72]:
+                        - link "MapLibre" [ref=e73] [cursor=pointer]:
+                          - /url: https://maplibre.org/
+                        - text: "| ©"
+                        - link "CARTO" [ref=e74] [cursor=pointer]:
+                          - /url: https://carto.com/about-carto/
+                        - text: ", ©"
+                        - link "OpenStreetMap" [ref=e75] [cursor=pointer]:
+                          - /url: http://www.openstreetmap.org/about/
+                        - text: contributors
+      - generic [ref=e78]:
+        - region "Map" [ref=e79]
+        - group [ref=e80]:
+          - generic "Toggle attribution" [ref=e81] [cursor=pointer]
+          - generic [ref=e82]:
+            - link "MapLibre" [ref=e83] [cursor=pointer]:
+              - /url: https://maplibre.org/
+            - text: "| ©"
+            - link "CARTO" [ref=e84] [cursor=pointer]:
+              - /url: https://carto.com/about-carto/
+            - text: ", ©"
+            - link "OpenStreetMap" [ref=e85] [cursor=pointer]:
+              - /url: http://www.openstreetmap.org/about/
+            - text: contributors
+  - generic:
+    - img
+  - generic [ref=e86]:
+    - button "Toggle Nuxt DevTools" [ref=e87] [cursor=pointer]:
+      - img [ref=e88]
+    - generic "Page load time" [ref=e91]:
+      - generic [ref=e92]: "42"
+      - generic [ref=e93]: ms
+    - button "Toggle Component Inspector" [ref=e95] [cursor=pointer]:
+      - img [ref=e96]

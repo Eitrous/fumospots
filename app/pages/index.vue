@@ -24,6 +24,7 @@ const currentPanel = computed(() => workbenchState.value.panel)
 const selectedPostId = computed(() => workbenchState.value.postId)
 const nextPath = computed(() => workbenchState.value.nextPath)
 const submitPath = computed(() => router.resolve(createWorkbenchLocation('submit')).fullPath)
+const isDetailPanel = computed(() => currentPanel.value === 'post')
 const panelKey = computed(() => {
   return currentPanel.value === 'post'
     ? `post-${selectedPostId.value}`
@@ -46,6 +47,10 @@ const viewerHandle = computed(() => {
 })
 
 const leadingAction = computed(() => {
+  if (currentPanel.value === 'post') {
+    return null
+  }
+
   if (currentPanel.value !== 'info') {
     return {
       label: t('common.backToMapOverview'),
@@ -228,11 +233,26 @@ onBeforeUnmount(() => {
     >
       <div class="workbench-sidebar__surface">
         <div class="workbench-sidebar__chrome">
-          <div class="workbench-sidebar__header">
-            <div class="workbench-brand" :aria-label="t('common.brand')">
+          <div class="workbench-sidebar__header" :class="{ 'is-detail': isDetailPanel }">
+            <div
+              v-if="!isDetailPanel"
+              class="workbench-brand"
+              :aria-label="t('common.brand')"
+            >
               <span class="workbench-brand__word workbench-brand__word--top">{{ brandWords.top }}</span>
               <span class="workbench-brand__word workbench-brand__word--bottom">{{ brandWords.bottom }}</span>
             </div>
+            <button
+              v-else
+              class="workbench-brand workbench-brand--exit"
+              type="button"
+              :title="t('post.exitDetail')"
+              :aria-label="t('post.exitDetail')"
+              @click="openInfoPanel"
+            >
+              <i class="button-icon fa-solid fa-arrow-left" aria-hidden="true" />
+              <span class="sr-only">{{ t('post.exitDetail') }}</span>
+            </button>
 
             <div class="workbench-tools">
               <button

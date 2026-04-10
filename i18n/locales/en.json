@@ -108,6 +108,7 @@
   },
   "post": {
     "eyebrow": "Post Detail",
+    "exitDetail": "Exit detail",
     "loadingTitle": "Loading this post…",
     "loadingDescription": "The right panel will show the full image, public location, and the author's note.",
     "authorNote": "Author note",
