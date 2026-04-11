@@ -1,4 +1,5 @@
-import { signStorageObject, createAdminServerClient } from '~~/server/utils/supabase'
+import { createAdminServerClient } from '~~/server/utils/supabase'
+import { getOrderedPhotoRows, signPhotoRows, type PhotoRow } from '~~/server/utils/posts'
 
 export default defineEventHandler(async (event) => {
   const id = Number(event.context.params?.id)
@@ -26,6 +27,11 @@ export default defineEventHandler(async (event) => {
       privacy_mode,
       captured_at,
       created_at,
+      post_photos (
+        image_path,
+        thumb_path,
+        sort_order
+      ),
       profiles!posts_user_id_fkey (
         username,
         avatar_url
@@ -42,12 +48,20 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const photoRows = getOrderedPhotoRows(data.post_photos as PhotoRow[], data)
+  const photos = await signPhotoRows(event, photoRows, 60 * 60)
+  const coverPhoto = photos[0] || {
+    imageUrl: null,
+    thumbUrl: null
+  }
+
   return {
     id: data.id,
     title: data.title,
     body: data.body,
-    imageUrl: await signStorageObject(event, data.image_path),
-    thumbUrl: await signStorageObject(event, data.thumb_path),
+    imageUrl: coverPhoto.imageUrl,
+    thumbUrl: coverPhoto.thumbUrl,
+    photos,
     placeName: data.place_name,
     countryName: data.country_name,
     regionName: data.region_name,

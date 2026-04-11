@@ -1,15 +1,42 @@
 <script setup lang="ts">
-import type { GeocodeResult, LatLng, PrivacyMode, SubmitPostPayload } from '~~/shared/fumo'
-import { STORAGE_BUCKET } from '~~/shared/fumo'
+import type {
+  EditablePostDetail,
+  GeocodeResult,
+  LatLng,
+  PrivacyMode,
+  SubmitPostPayload
+} from '~~/shared/fumo'
+import { MAX_POST_PHOTOS, STORAGE_BUCKET } from '~~/shared/fumo'
+
+type SelectedPhoto = {
+  id: string
+  file: File | null
+  name: string
+  imagePath: string | null
+  thumbPath: string | null
+  thumbnailFile: File | null
+  imagePreviewUrl: string
+  thumbPreviewUrl: string
+  revokeImagePreview: boolean
+  revokeThumbPreview: boolean
+}
+
+const props = withDefaults(defineProps<{
+  mode?: 'create' | 'edit'
+  postId?: number | null
+}>(), {
+  mode: 'create',
+  postId: null
+})
 
 const auth = useAuthState()
 const { t } = useI18n()
 const { formatLatLng } = useFormatters()
+const { invalidatePostDetail } = usePostDetailCache()
+const { invalidateUserPage } = useUserPageCache()
 
-const selectedFile = ref<File | null>(null)
-const thumbnailFile = ref<File | null>(null)
-const imagePreviewUrl = ref('')
-const thumbPreviewUrl = ref('')
+const isEditMode = computed(() => props.mode === 'edit')
+const selectedPhotos = ref<SelectedPhoto[]>([])
 const fileInputKey = ref(0)
 
 const title = ref('')
@@ -28,23 +55,33 @@ const searchResults = ref<GeocodeResult[]>([])
 const searching = ref(false)
 const detectingExif = ref(false)
 const reverseLookupPending = ref(false)
+const loadingEditable = ref(false)
 const uploading = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 
-const submitNextPath = '/?panel=submit'
+const submitNextPath = computed(() => {
+  return isEditMode.value && props.postId
+    ? `/?panel=edit&post=${props.postId}`
+    : '/?panel=submit'
+})
+
+const revokePhotoPreviewUrls = (photo: SelectedPhoto) => {
+  if (photo.revokeImagePreview && photo.imagePreviewUrl) {
+    URL.revokeObjectURL(photo.imagePreviewUrl)
+  }
+
+  if (photo.revokeThumbPreview && photo.thumbPreviewUrl) {
+    URL.revokeObjectURL(photo.thumbPreviewUrl)
+  }
+}
 
 const revokePreviewUrls = () => {
-  if (imagePreviewUrl.value) {
-    URL.revokeObjectURL(imagePreviewUrl.value)
+  for (const photo of selectedPhotos.value) {
+    revokePhotoPreviewUrls(photo)
   }
 
-  if (thumbPreviewUrl.value) {
-    URL.revokeObjectURL(thumbPreviewUrl.value)
-  }
-
-  imagePreviewUrl.value = ''
-  thumbPreviewUrl.value = ''
+  selectedPhotos.value = []
 }
 
 const resetForm = () => {
@@ -58,8 +95,6 @@ const resetForm = () => {
   exactLocation.value = null
   publicLocation.value = null
   capturedAt.value = ''
-  selectedFile.value = null
-  thumbnailFile.value = null
   searchQuery.value = ''
   searchResults.value = []
   revokePreviewUrls()
@@ -73,6 +108,62 @@ const toDateTimeLocalValue = (date: Date) => {
     pad(date.getMonth() + 1),
     pad(date.getDate())
   ].join('-') + `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+const toExistingPhotoName = (imagePath: string, index: number) => {
+  const segments = imagePath.split('/').filter(Boolean)
+  const folder = segments.length >= 2 ? segments[segments.length - 2] : null
+  return folder ? `${folder}/${segments.at(-1) || `photo-${index + 1}`}` : `photo-${index + 1}`
+}
+
+const applyEditablePost = (detail: EditablePostDetail) => {
+  title.value = detail.title
+  body.value = detail.body || ''
+  placeName.value = detail.placeName || ''
+  countryName.value = detail.countryName
+  regionName.value = detail.regionName
+  cityName.value = detail.cityName
+  privacyMode.value = detail.privacyMode
+  exactLocation.value = detail.exactLocation
+  publicLocation.value = detail.publicLocation
+  capturedAt.value = detail.capturedAt ? toDateTimeLocalValue(new Date(detail.capturedAt)) : ''
+  searchQuery.value = ''
+  searchResults.value = []
+  revokePreviewUrls()
+  selectedPhotos.value = detail.photos.map((photo, index) => ({
+    id: `existing-${index}-${photo.imagePath}`,
+    file: null,
+    name: toExistingPhotoName(photo.imagePath, index),
+    imagePath: photo.imagePath,
+    thumbPath: photo.thumbPath,
+    thumbnailFile: null,
+    imagePreviewUrl: photo.imageUrl || photo.thumbUrl || '',
+    thumbPreviewUrl: photo.thumbUrl || photo.imageUrl || '',
+    revokeImagePreview: false,
+    revokeThumbPreview: false
+  }))
+  fileInputKey.value += 1
+}
+
+const loadEditablePost = async () => {
+  if (!isEditMode.value || !props.postId || !auth.authHeaders.value.Authorization) {
+    return
+  }
+
+  loadingEditable.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  try {
+    const detail = await $fetch<EditablePostDetail>(`/api/posts/${props.postId}/edit`, {
+      headers: auth.authHeaders.value
+    })
+    applyEditablePost(detail)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : t('edit.errors.loadFailed')
+  } finally {
+    loadingEditable.value = false
+  }
 }
 
 const createThumbnail = async (file: File) => {
@@ -204,14 +295,14 @@ const extractExif = async (file: File) => {
     const lng = typeof exif?.longitude === 'number' ? exif.longitude : null
     const captured = exif?.DateTimeOriginal || exif?.DateTimeDigitized || exif?.CreateDate
 
-    if (lat != null && lng != null) {
+    if (lat != null && lng != null && !exactLocation.value) {
       handleExactLocationUpdate({
         lat,
         lng
       })
     }
 
-    if (captured instanceof Date) {
+    if (captured instanceof Date && !capturedAt.value) {
       capturedAt.value = toDateTimeLocalValue(captured)
     }
   } finally {
@@ -219,33 +310,111 @@ const extractExif = async (file: File) => {
   }
 }
 
-const onFileChange = async (event: Event) => {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0] || null
-
-  errorMessage.value = ''
-  successMessage.value = ''
-  selectedFile.value = file
-  thumbnailFile.value = null
-  revokePreviewUrls()
-
-  if (!file) {
+const extractCoverExifIfEmpty = async () => {
+  if (exactLocation.value && capturedAt.value) {
     return
   }
 
-  imagePreviewUrl.value = URL.createObjectURL(file)
-
-  try {
-    thumbnailFile.value = await createThumbnail(file)
-    thumbPreviewUrl.value = URL.createObjectURL(thumbnailFile.value)
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('submit.errors.thumbnailFailed')
+  const coverPhoto = selectedPhotos.value[0]
+  if (!coverPhoto?.file) {
+    return
   }
 
   try {
-    await extractExif(file)
+    await extractExif(coverPhoto.file)
   } catch {
     // EXIF is optional; silent fallback keeps the flow moving.
+  }
+}
+
+const onFileChange = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files || [])
+
+  errorMessage.value = ''
+  successMessage.value = ''
+  input.value = ''
+
+  if (!files.length) {
+    return
+  }
+
+  const wasEmpty = selectedPhotos.value.length === 0
+  const remainingSlots = MAX_POST_PHOTOS - selectedPhotos.value.length
+  const acceptedFiles = files.slice(0, Math.max(0, remainingSlots))
+
+  if (acceptedFiles.length < files.length) {
+    errorMessage.value = t('submit.errors.tooManyPhotos', { max: MAX_POST_PHOTOS })
+  }
+
+  let thumbnailFailed = false
+  for (const [index, file] of acceptedFiles.entries()) {
+    const photo: SelectedPhoto = {
+      id: crypto.randomUUID(),
+      file,
+      name: file.name,
+      imagePath: null,
+      thumbPath: null,
+      thumbnailFile: null,
+      imagePreviewUrl: URL.createObjectURL(file),
+      thumbPreviewUrl: '',
+      revokeImagePreview: true,
+      revokeThumbPreview: false
+    }
+
+    selectedPhotos.value.push(photo)
+
+    try {
+      photo.thumbnailFile = await createThumbnail(file)
+      photo.thumbPreviewUrl = URL.createObjectURL(photo.thumbnailFile)
+      photo.revokeThumbPreview = true
+    } catch {
+      thumbnailFailed = true
+    }
+
+    if (wasEmpty && index === 0) {
+      await extractCoverExifIfEmpty()
+    }
+  }
+
+  if (thumbnailFailed && !errorMessage.value) {
+    errorMessage.value = t('submit.errors.thumbnailFailed')
+  }
+}
+
+const removePhoto = (photoId: string) => {
+  const index = selectedPhotos.value.findIndex((photo) => photo.id === photoId)
+  if (index < 0) {
+    return
+  }
+
+  const [removed] = selectedPhotos.value.splice(index, 1)
+  if (removed) {
+    revokePhotoPreviewUrls(removed)
+  }
+
+  if (index === 0) {
+    void extractCoverExifIfEmpty()
+  }
+
+  fileInputKey.value += 1
+}
+
+const movePhoto = (photoId: string, direction: -1 | 1) => {
+  const index = selectedPhotos.value.findIndex((photo) => photo.id === photoId)
+  const nextIndex = index + direction
+
+  if (index < 0 || nextIndex < 0 || nextIndex >= selectedPhotos.value.length) {
+    return
+  }
+
+  const [photo] = selectedPhotos.value.splice(index, 1)
+  if (photo) {
+    selectedPhotos.value.splice(nextIndex, 0, photo)
+  }
+
+  if (index === 0 || nextIndex === 0) {
+    void extractCoverExifIfEmpty()
   }
 }
 
@@ -264,15 +433,32 @@ watch(
 
     if (!auth.user.value) {
       void navigateTo(createWorkbenchLocation('login', {
-        next: submitNextPath
+        next: submitNextPath.value
       }), { replace: true })
       return
     }
 
     if (!auth.hasUsername.value) {
       void navigateTo(createWorkbenchLocation('onboarding', {
-        next: submitNextPath
+        next: submitNextPath.value
       }), { replace: true })
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  () => [
+    isEditMode.value,
+    props.postId,
+    auth.ready.value,
+    auth.user.value?.id,
+    auth.hasUsername.value,
+    auth.authHeaders.value.Authorization
+  ],
+  ([editing, postId, ready, userId, hasUsername]) => {
+    if (editing && postId && ready && userId && hasUsername) {
+      void loadEditablePost()
     }
   },
   { immediate: true }
@@ -280,21 +466,89 @@ watch(
 
 const canSubmit = computed(() => {
   return Boolean(
-    selectedFile.value
+    selectedPhotos.value.length
     && title.value.trim()
     && exactLocation.value
     && publicLocation.value
     && auth.viewer.value
+    && !loadingEditable.value
     && !uploading.value
   )
 })
+
+const uploadPhoto = async (
+  photo: SelectedPhoto,
+  index: number,
+  postFolder: string,
+  userId: string,
+  uploadedPaths: string[]
+) => {
+  if (!photo.file && photo.imagePath) {
+    return {
+      imagePath: photo.imagePath,
+      thumbPath: photo.thumbPath
+    }
+  }
+
+  if (!photo.file) {
+    throw new Error(t('submit.errors.selectPhoto'))
+  }
+
+  const supabase = useSupabaseBrowserClient()
+  const folderName = String(index + 1).padStart(2, '0')
+  const safeExtension = photo.name.split('.').pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, '') || 'jpg'
+  const originalPath = `${userId}/${postFolder}/${folderName}/original.${safeExtension}`
+  const thumbPath = photo.thumbnailFile
+    ? `${userId}/${postFolder}/${folderName}/thumb.jpg`
+    : null
+
+  const { error: uploadOriginalError } = await supabase
+    .storage
+    .from(STORAGE_BUCKET)
+    .upload(originalPath, photo.file, {
+      upsert: false,
+      contentType: photo.file.type || undefined
+    })
+
+  if (uploadOriginalError) {
+    throw uploadOriginalError
+  }
+
+  uploadedPaths.push(originalPath)
+
+  if (photo.thumbnailFile && thumbPath) {
+    const { error: uploadThumbError } = await supabase
+      .storage
+      .from(STORAGE_BUCKET)
+      .upload(thumbPath, photo.thumbnailFile, {
+        upsert: false,
+        contentType: 'image/jpeg'
+      })
+
+    if (uploadThumbError) {
+      throw uploadThumbError
+    }
+
+    uploadedPaths.push(thumbPath)
+  }
+
+  return {
+    imagePath: originalPath,
+    thumbPath
+  }
+}
 
 const submitPost = async () => {
   errorMessage.value = ''
   successMessage.value = ''
 
-  if (!selectedFile.value) {
+  if (!selectedPhotos.value.length) {
     errorMessage.value = t('submit.errors.selectPhoto')
+    return
+  }
+
+  if (selectedPhotos.value.length > MAX_POST_PHOTOS) {
+    errorMessage.value = t('submit.errors.tooManyPhotos', { max: MAX_POST_PHOTOS })
     return
   }
 
@@ -322,45 +576,22 @@ const submitPost = async () => {
   uploading.value = true
 
   const supabase = useSupabaseBrowserClient()
-  const postFolder = crypto.randomUUID()
-  const safeExtension = selectedFile.value.name.split('.').pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, '') || 'jpg'
-  const originalPath = `${viewer.userId}/${postFolder}/original.${safeExtension}`
-  const thumbPath = thumbnailFile.value
-    ? `${viewer.userId}/${postFolder}/thumb.jpg`
-    : null
+  const postFolder = isEditMode.value && props.postId
+    ? `edit-${props.postId}-${crypto.randomUUID()}`
+    : crypto.randomUUID()
+  const uploadedPaths: string[] = []
+  const photosToUpload = selectedPhotos.value.slice()
 
   try {
-    const { error: uploadOriginalError } = await supabase
-      .storage
-      .from(STORAGE_BUCKET)
-      .upload(originalPath, selectedFile.value, {
-        upsert: false,
-        contentType: selectedFile.value.type || undefined
-      })
-
-    if (uploadOriginalError) {
-      throw uploadOriginalError
-    }
-
-    if (thumbnailFile.value && thumbPath) {
-      const { error: uploadThumbError } = await supabase
-        .storage
-        .from(STORAGE_BUCKET)
-        .upload(thumbPath, thumbnailFile.value, {
-          upsert: false,
-          contentType: 'image/jpeg'
-        })
-
-      if (uploadThumbError) {
-        throw uploadThumbError
-      }
+    const photos = []
+    for (const [index, photo] of photosToUpload.entries()) {
+      photos.push(await uploadPhoto(photo, index, postFolder, viewer.userId, uploadedPaths))
     }
 
     const payload: SubmitPostPayload = {
       title: title.value.trim(),
       body: body.value.trim() || null,
-      imagePath: originalPath,
-      thumbPath,
+      photos,
       capturedAt: capturedAt.value ? new Date(capturedAt.value).toISOString() : null,
       exactLocation: exactLocation.value,
       publicLocation: publicLocation.value,
@@ -371,19 +602,38 @@ const submitPost = async () => {
       cityName: cityName.value
     }
 
-    await $fetch('/api/posts', {
+    await $fetch(isEditMode.value && props.postId ? `/api/posts/${props.postId}/edit` : '/api/posts', {
       method: 'POST',
       headers: auth.authHeaders.value,
       body: payload
     })
 
-    successMessage.value = t('submit.success')
-    resetForm()
+    const nextSuccessMessage = isEditMode.value ? t('edit.success') : t('submit.success')
+    const viewerUsername = viewer.profile.username
+
+    if (isEditMode.value) {
+      if (props.postId) {
+        invalidatePostDetail(props.postId)
+      }
+      if (viewerUsername) {
+        invalidateUserPage(viewerUsername)
+      }
+      await loadEditablePost()
+      successMessage.value = nextSuccessMessage
+    } else {
+      if (viewerUsername) {
+        invalidateUserPage(viewerUsername)
+      }
+      successMessage.value = nextSuccessMessage
+      resetForm()
+    }
   } catch (error) {
-    await supabase
-      .storage
-      .from(STORAGE_BUCKET)
-      .remove([originalPath, thumbPath].filter(Boolean) as string[])
+    if (uploadedPaths.length) {
+      await supabase
+        .storage
+        .from(STORAGE_BUCKET)
+        .remove(uploadedPaths)
+    }
 
     errorMessage.value = error instanceof Error ? error.message : t('submit.errors.submitFailed')
   } finally {
@@ -392,8 +642,10 @@ const submitPost = async () => {
 }
 
 useWorkbenchToolbarAction(computed(() => ({
-  label: uploading.value ? t('submit.submitting') : t('submit.submitButton'),
-  icon: 'fa-paper-plane',
+  label: uploading.value
+    ? (isEditMode.value ? t('edit.submitting') : t('submit.submitting'))
+    : (isEditMode.value ? t('edit.submitButton') : t('submit.submitButton')),
+  icon: isEditMode.value ? 'fa-pen-to-square' : 'fa-paper-plane',
   run: submitPost,
   disabled: !canSubmit.value,
   loading: uploading.value
@@ -406,14 +658,16 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="workbench-panel workbench-panel--submit">
-    <span class="eyebrow">{{ t('submit.eyebrow') }}</span>
-    <h2 class="workbench-panel__title workbench-panel__title--poster">{{ t('submit.title') }}</h2>
-    <p class="workbench-panel__copy workbench-panel__copy--poster">{{ t('submit.description') }}</p>
+    <span class="eyebrow">{{ isEditMode ? t('edit.eyebrow') : t('submit.eyebrow') }}</span>
+    <h2 class="workbench-panel__title workbench-panel__title--poster">{{ isEditMode ? t('edit.title') : t('submit.title') }}</h2>
+    <p class="workbench-panel__copy workbench-panel__copy--poster">{{ isEditMode ? t('edit.description') : t('submit.description') }}</p>
+    <p v-if="loadingEditable" class="status-inline">{{ t('edit.loading') }}</p>
 
     <section class="workbench-stack-section">
       <div class="workbench-stack-section__head">
         <strong>{{ t('submit.photoSectionTitle') }}</strong>
-        <div v-if="detectingExif || reverseLookupPending" class="chip-row">
+        <div class="chip-row">
+          <span class="status-inline">{{ selectedPhotos.length }}/{{ MAX_POST_PHOTOS }}</span>
           <span v-if="detectingExif" class="status-inline">{{ t('submit.exifReading') }}</span>
           <span v-if="reverseLookupPending" class="status-inline">{{ t('submit.reverseLookup') }}</span>
         </div>
@@ -425,16 +679,54 @@ onBeforeUnmount(() => {
           class="field-input"
           type="file"
           accept="image/*"
+          multiple
+          :disabled="uploading || loadingEditable || selectedPhotos.length >= MAX_POST_PHOTOS"
           @change="onFileChange"
         >
 
-        <div v-if="selectedFile" class="photo-preview">
-          <img :src="imagePreviewUrl" :alt="selectedFile.name">
-        </div>
-
-        <div v-if="thumbPreviewUrl" class="photo-preview photo-preview--thumb">
-          <img :src="thumbPreviewUrl" :alt="t('submit.thumbnailAlt')">
-        </div>
+        <ul v-if="selectedPhotos.length" class="photo-preview-list">
+          <li
+            v-for="(photo, index) in selectedPhotos"
+            :key="photo.id"
+            class="photo-preview-item"
+          >
+            <div class="photo-preview">
+              <img v-if="photo.imagePreviewUrl" :src="photo.imagePreviewUrl" :alt="photo.name">
+              <i v-else class="fa-solid fa-image" aria-hidden="true" />
+              <span class="photo-preview__index">{{ index + 1 }}</span>
+              <div class="photo-preview__actions">
+                <button
+                  class="photo-preview__move"
+                  type="button"
+                  :aria-label="t('edit.movePhotoEarlier')"
+                  :disabled="uploading || loadingEditable || index === 0"
+                  @click="movePhoto(photo.id, -1)"
+                >
+                  <i class="fa-solid fa-arrow-left" aria-hidden="true" />
+                </button>
+                <button
+                  class="photo-preview__move"
+                  type="button"
+                  :aria-label="t('edit.movePhotoLater')"
+                  :disabled="uploading || loadingEditable || index === selectedPhotos.length - 1"
+                  @click="movePhoto(photo.id, 1)"
+                >
+                  <i class="fa-solid fa-arrow-right" aria-hidden="true" />
+                </button>
+              </div>
+              <button
+                class="photo-preview__remove"
+                type="button"
+                :aria-label="t('edit.removePhoto')"
+                :disabled="uploading || loadingEditable"
+                @click="removePhoto(photo.id)"
+              >
+                <i class="fa-solid fa-xmark" aria-hidden="true" />
+              </button>
+            </div>
+            <span class="photo-preview-item__name">{{ photo.name }}</span>
+          </li>
+        </ul>
       </div>
 
       <div class="field-grid">

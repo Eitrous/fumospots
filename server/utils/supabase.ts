@@ -134,6 +134,25 @@ export const requireAuthenticatedUser = async (event: H3Event) => {
   }
 }
 
+export const getOptionalAuthenticatedUser = async (event: H3Event) => {
+  const accessToken = getAccessToken(event)
+  if (!accessToken) {
+    return null
+  }
+
+  const supabase = createPublicServerClient(event, accessToken)
+  const { data, error } = await supabase.auth.getUser(accessToken)
+
+  if (error || !data.user) {
+    return null
+  }
+
+  return {
+    accessToken,
+    user: data.user
+  }
+}
+
 export const requireAdminUser = async (event: H3Event) => {
   const auth = await requireAuthenticatedUser(event)
   const profile = await ensureProfile(event, auth.user)
@@ -149,28 +168,6 @@ export const requireAdminUser = async (event: H3Event) => {
     ...auth,
     profile
   }
-}
-
-export const signStorageObject = async (
-  event: H3Event,
-  path?: string | null,
-  expiresIn = 60 * 60
-) => {
-  if (!path) {
-    return null
-  }
-
-  const admin = createAdminServerClient(event)
-  const { data, error } = await admin
-    .storage
-    .from(STORAGE_BUCKET)
-    .createSignedUrl(path, expiresIn)
-
-  if (error) {
-    return null
-  }
-
-  return data.signedUrl
 }
 
 export const signStorageObjects = async (

@@ -8,9 +8,12 @@ definePageMeta({
 
 const auth = useAuthState()
 const { formatDateTime, formatLatLng, privacyModeLabel } = useFormatters({ locale: 'zh-CN' })
+const { invalidatePostDetail } = usePostDetailCache()
+const { invalidateUserPage } = useUserPageCache()
 
 const posts = ref<AdminReviewPost[]>([])
-const selectedId = ref<number | null>(null)
+const selectedKey = ref<string | null>(null)
+const selectedPhotoIndex = ref(0)
 const reviewNote = ref('')
 const loading = ref(true)
 const submitting = ref(false)
@@ -18,12 +21,42 @@ const feedbackMessage = ref('')
 const errorMessage = ref('')
 
 const selectedPost = computed(() => {
-  return posts.value.find((post) => post.id === selectedId.value) || null
+  return posts.value.find((post) => post.reviewKey === selectedKey.value) || null
+})
+
+const selectedReviewPhotos = computed(() => {
+  if (!selectedPost.value) {
+    return []
+  }
+
+  if (selectedPost.value.photos.length) {
+    return selectedPost.value.photos
+  }
+
+  return selectedPost.value.imageUrl
+    ? [{
+        imageUrl: selectedPost.value.imageUrl,
+        thumbUrl: selectedPost.value.thumbUrl
+      }]
+    : []
+})
+
+const selectedReviewPhoto = computed(() => {
+  return selectedReviewPhotos.value[selectedPhotoIndex.value] || selectedReviewPhotos.value[0] || null
+})
+
+const selectedReviewTypeLabel = computed(() => {
+  return selectedPost.value?.reviewKind === 'revision' ? '修改审核' : '新投稿'
 })
 
 watch(selectedPost, (post) => {
   reviewNote.value = post?.reviewNote || ''
+  selectedPhotoIndex.value = 0
 }, { immediate: true })
+
+const selectPhoto = (index: number) => {
+  selectedPhotoIndex.value = index
+}
 
 const loadPosts = async () => {
   if (!auth.authHeaders.value.Authorization) {
@@ -37,11 +70,11 @@ const loadPosts = async () => {
       headers: auth.authHeaders.value,
       query: { status: 'pending' }
     })
-    selectedId.value = posts.value[0]?.id ?? null
+    selectedKey.value = posts.value[0]?.reviewKey ?? null
     feedbackMessage.value = ''
     errorMessage.value = ''
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '待审核列表加载失败'
+    errorMessage.value = error instanceof Error ? error.message : '待审核列表加载失败。'
   } finally {
     loading.value = false
   }
@@ -63,9 +96,16 @@ const submitReview = async (action: 'approve' | 'reject') => {
   }
 
   submitting.value = true
+  const affectedPostId = selectedPost.value.id
+  const affectedUsername = selectedPost.value.author.username
+  const handledKey = selectedPost.value.reviewKey
 
   try {
-    await $fetch(`/api/admin/posts/${selectedPost.value.id}/${action}`, {
+    const endpoint = selectedPost.value.reviewKind === 'revision'
+      ? `/api/admin/revisions/${selectedPost.value.revisionId}/${action}`
+      : `/api/admin/posts/${selectedPost.value.id}/${action}`
+
+    await $fetch(endpoint, {
       method: 'POST',
       headers: auth.authHeaders.value,
       body: {
@@ -73,15 +113,16 @@ const submitReview = async (action: 'approve' | 'reject') => {
       }
     })
 
-    const handledId = selectedPost.value.id
-    posts.value = posts.value.filter((post) => post.id !== handledId)
-    selectedId.value = posts.value[0]?.id ?? null
+    invalidatePostDetail(affectedPostId)
+    invalidateUserPage(affectedUsername)
+    posts.value = posts.value.filter((post) => post.reviewKey !== handledKey)
+    selectedKey.value = posts.value[0]?.reviewKey ?? null
     feedbackMessage.value = action === 'approve'
-      ? '这条投稿已经通过审核并发布到地图。'
-      : '这条投稿已经驳回。'
+      ? '已通过，公开内容会按当前审核项更新。'
+      : '已驳回，公开内容不会被修改。'
     errorMessage.value = ''
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '审核操作失败'
+    errorMessage.value = error instanceof Error ? error.message : '审核操作失败。'
   } finally {
     submitting.value = false
   }
@@ -92,26 +133,27 @@ const submitReview = async (action: 'approve' | 'reject') => {
   <main class="page-shell">
     <section class="panel panel--page">
       <span class="eyebrow">Admin Review</span>
-      <h1 class="page-title">审核待发布的旅途照片。</h1>
-      <p class="lede">左侧挑选待审核投稿，右侧查看原图、精确/公开位置和作者留言，再决定是否发布到公开地图。</p>
+      <h1 class="page-title">审核待发布内容</h1>
+      <p class="lede">左侧选择项目，右侧查看原图、位置、作者和备注。</p>
     </section>
 
     <section class="review-layout">
       <aside class="panel panel--page review-list">
         <template v-if="loading">
-          <span class="status-inline">正在加载待审核投稿…</span>
+          <span class="status-inline">正在加载待审核内容</span>
         </template>
 
         <template v-else-if="posts.length">
           <button
             v-for="post in posts"
-            :key="post.id"
-            :class="{ 'is-active': selectedId === post.id }"
+            :key="post.reviewKey"
+            :class="{ 'is-active': selectedKey === post.reviewKey }"
             type="button"
-            @click="selectedId = post.id"
+            @click="selectedKey = post.reviewKey"
           >
             <strong>{{ post.title }}</strong>
             <p>@{{ post.author.username }}</p>
+            <p>{{ post.reviewKind === 'revision' ? '修改审核' : '新投稿' }}</p>
             <p>{{ post.placeName || '未填写地点' }}</p>
             <p>{{ formatDateTime(post.createdAt) }}</p>
           </button>
@@ -119,17 +161,32 @@ const submitReview = async (action: 'approve' | 'reject') => {
 
         <div v-else class="empty-state">
           <h2>现在没有待审核内容</h2>
-          <p>等新的投稿进入待审核队列后，这里会自动成为你的工作台。</p>
+          <p>新投稿或作品修改进入队列后会出现在这里。</p>
         </div>
       </aside>
 
       <section class="panel panel--page review-detail">
         <template v-if="selectedPost">
-          <div v-if="selectedPost.imageUrl" class="review-detail__hero">
-            <img :src="selectedPost.imageUrl" :alt="selectedPost.title">
+          <div v-if="selectedReviewPhoto?.imageUrl" class="review-detail__hero">
+            <img :src="selectedReviewPhoto.imageUrl" :alt="selectedPost.title">
           </div>
 
-          <span class="eyebrow">Reviewing #{{ selectedPost.id }}</span>
+          <div v-if="selectedReviewPhotos.length > 1" class="photo-strip photo-strip--review" aria-label="Review photos">
+            <button
+              v-for="(photo, index) in selectedReviewPhotos"
+              :key="`${selectedPost.reviewKey}-${index}`"
+              class="photo-strip__button"
+              :class="{ 'is-active': selectedPhotoIndex === index }"
+              type="button"
+              :aria-label="`查看第 ${index + 1} 张照片`"
+              @click="selectPhoto(index)"
+            >
+              <img v-if="photo.thumbUrl || photo.imageUrl" :src="photo.thumbUrl || photo.imageUrl || ''" :alt="selectedPost.title">
+              <i v-else class="fa-solid fa-image" aria-hidden="true" />
+            </button>
+          </div>
+
+          <span class="eyebrow">{{ selectedReviewTypeLabel }} #{{ selectedPost.id }}</span>
           <h2>{{ selectedPost.title }}</h2>
           <div class="detail-meta">
             <span class="status-inline">@{{ selectedPost.author.username }}</span>
@@ -140,15 +197,15 @@ const submitReview = async (action: 'approve' | 'reject') => {
           <p class="support-copy">{{ selectedPost.body || '作者没有留下额外留言。' }}</p>
 
           <div class="field-grid field-grid--two">
-            <div class="panel panel--page">
-              <strong>坐标对照</strong>
+            <div class="review-info-block">
+              <strong>坐标</strong>
               <p class="support-copy">精确位置：{{ formatLatLng(selectedPost.exactLocation) }}</p>
               <p class="support-copy">公开位置：{{ formatLatLng(selectedPost.publicLocation) }}</p>
               <p class="support-copy">拍摄时间：{{ formatDateTime(selectedPost.capturedAt) }}</p>
             </div>
 
-            <div class="panel panel--page">
-              <strong>公开地图预览</strong>
+            <div class="review-info-block">
+              <strong>位置预览</strong>
               <LocationPreviewMap
                 :exact-location="selectedPost.exactLocation"
                 :public-location="selectedPost.publicLocation"
@@ -163,23 +220,39 @@ const submitReview = async (action: 'approve' | 'reject') => {
             <textarea
               v-model="reviewNote"
               class="field-textarea"
-              placeholder="可以写给作者的备注，或管理员内部说明。"
+              placeholder="写给作者或管理员内部查看的备注"
             />
           </label>
 
           <div class="inline-actions">
-            <button class="button button--secondary" type="button" :disabled="submitting" @click="submitReview('approve')">
-              {{ submitting ? '处理中…' : '通过并发布' }}
+            <button
+              class="workbench-icon-button workbench-icon-button--primary"
+              type="button"
+              :disabled="submitting"
+              title="通过"
+              aria-label="通过"
+              @click="submitReview('approve')"
+            >
+              <i class="button-icon fa-solid" :class="submitting ? 'fa-spinner fa-spin' : 'fa-check'" aria-hidden="true" />
+              <span class="sr-only">通过</span>
             </button>
-            <button class="button button--danger" type="button" :disabled="submitting" @click="submitReview('reject')">
-              驳回
+            <button
+              class="workbench-icon-button workbench-icon-button--danger"
+              type="button"
+              :disabled="submitting"
+              title="驳回"
+              aria-label="驳回"
+              @click="submitReview('reject')"
+            >
+              <i class="button-icon fa-solid fa-xmark" aria-hidden="true" />
+              <span class="sr-only">驳回</span>
             </button>
           </div>
         </template>
 
         <div v-else class="empty-state">
-          <h2>从左侧选择一条投稿</h2>
-          <p>通过后它会立即进入公开地图；驳回则保留在后台，不会泄露到前台。</p>
+          <h2>从左侧选择一条内容</h2>
+          <p>通过后进入公开地图；驳回则保留在后台记录。</p>
         </div>
 
         <p v-if="feedbackMessage" class="success-banner">{{ feedbackMessage }}</p>

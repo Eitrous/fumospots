@@ -71,13 +71,6 @@
     "untitledPost": "無題の投稿",
     "taiwanProvinceLabel": "TAIWAN PROVINCE"
   },
-  "legend": {
-    "title": "地図ガイド",
-    "description": "縮小時は分布とクラスタを優先表示し、十分に拡大すると写真サムネイルのマーカーに切り替わります。",
-    "approvedPin": "承認済み投稿の標準ピン",
-    "thumbnailMarker": "拡大時の写真サムネイルマーカー",
-    "approximateMarker": "概略公開を選ぶと正確な撮影地点は公開されません"
-  },
   "auth": {
     "eyebrow": "マジックリンクログイン",
     "title": "投稿するにはログイン。",
@@ -168,12 +161,46 @@
       "cannotCreateThumbnailCanvas": "サムネイル用キャンバスを作成できませんでした。",
       "thumbnailFailed": "サムネイルの生成に失敗しました。",
       "searchFailed": "場所検索に失敗しました。",
-      "selectPhoto": "投稿する写真を選択してください。",
+      "selectPhoto": "投稿する写真を1枚以上選択してください。",
+      "tooManyPhotos": "一度に投稿できる写真は最大 {max} 枚です。",
       "titleRequired": "タイトルを入力してください。",
       "exactRequired": "まず地図上で正確な撮影位置を指定してください。",
       "publicRequired": "まず公開位置を確認してください。",
       "sessionExpired": "ログイン状態の有効期限が切れました。もう一度ログインしてください。",
       "submitFailed": "投稿に失敗しました。"
+    }
+  },
+  "edit": {
+    "eyebrow": "投稿を編集",
+    "title": "この投稿を編集する。",
+    "description": "変更は審査後に公開版へ反映されます。",
+    "loading": "編集内容を読み込み中...",
+    "submitButton": "編集を審査へ送信",
+    "submitting": "編集を送信中...",
+    "success": "編集を審査へ送信しました。承認されるまで公開版はそのまま表示されます。",
+    "removePhoto": "写真を削除",
+    "movePhotoEarlier": "写真を前へ移動",
+    "movePhotoLater": "写真を後ろへ移動",
+    "errors": {
+      "loadFailed": "編集内容の読み込みに失敗しました。"
+    }
+  },
+  "user": {
+    "eyebrow": "ユーザーページ",
+    "postsTitle": "投稿作品",
+    "visibleCount": "{count} 件",
+    "loading": "投稿を読み込み中...",
+    "editPost": "投稿を編集",
+    "pendingRevision": "編集審査中",
+    "emptyTitle": "表示できる投稿はありません",
+    "emptyDescription": "承認された投稿がここに表示されます。",
+    "status": {
+      "approved": "承認済み",
+      "pending": "審査中",
+      "rejected": "却下"
+    },
+    "errors": {
+      "loadFailed": "ユーザーページの読み込みに失敗しました。"
     }
   }
 }

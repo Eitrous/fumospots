@@ -13,6 +13,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthState()
 const toolbarController = provideWorkbenchToolbarActionController()
+const { prefetchPostDetail } = usePostDetailCache()
 
 const isMobile = ref(false)
 const mobileSheetOpen = ref(false)
@@ -22,12 +23,15 @@ let viewportQuery: MediaQueryList | null = null
 const workbenchState = computed(() => resolveWorkbenchState(route.query))
 const currentPanel = computed(() => workbenchState.value.panel)
 const selectedPostId = computed(() => workbenchState.value.postId)
+const selectedUsername = computed(() => workbenchState.value.username)
 const nextPath = computed(() => workbenchState.value.nextPath)
 const submitPath = computed(() => router.resolve(createWorkbenchLocation('submit')).fullPath)
 const isDetailPanel = computed(() => currentPanel.value === 'post')
 const panelKey = computed(() => {
-  return currentPanel.value === 'post'
-    ? `post-${selectedPostId.value}`
+  return (currentPanel.value === 'post' || currentPanel.value === 'edit')
+    ? `${currentPanel.value}-${selectedPostId.value}`
+    : currentPanel.value === 'user'
+      ? `user-${selectedUsername.value}`
     : currentPanel.value
 })
 
@@ -157,6 +161,8 @@ async function openSubmitPanel() {
 }
 
 async function handleMarkerSelection(postId: number) {
+  prefetchPostDetail(postId)
+
   await openPanel('post', {
     postId
   })
@@ -363,6 +369,17 @@ onBeforeUnmount(() => {
             />
 
             <WorkbenchSubmitPanel v-else-if="currentPanel === 'submit'" />
+
+            <WorkbenchSubmitPanel
+              v-else-if="currentPanel === 'edit' && selectedPostId"
+              mode="edit"
+              :post-id="selectedPostId"
+            />
+
+            <WorkbenchUserPanel
+              v-else-if="currentPanel === 'user' && selectedUsername"
+              :username="selectedUsername"
+            />
 
             <WorkbenchPostPanel
               v-else-if="currentPanel === 'post' && selectedPostId"

@@ -71,13 +71,6 @@
     "untitledPost": "Untitled post",
     "taiwanProvinceLabel": "TAIWAN PROVINCE"
   },
-  "legend": {
-    "title": "Map guide",
-    "description": "At low zoom levels you see distribution and clustering first. Zoom in and the markers switch into photo thumbnails.",
-    "approvedPin": "Standard pin for approved posts",
-    "thumbnailMarker": "Photo thumbnail marker at closer zoom",
-    "approximateMarker": "Approximate public locations never expose the exact shooting point"
-  },
   "auth": {
     "eyebrow": "Magic Link Login",
     "title": "Log in to submit.",
@@ -131,7 +124,7 @@
     "eyebrow": "Submit A Photo",
     "title": "Upload a photo and mark its public location.",
     "description": "Only the public point appears on the public site.",
-    "photoSectionTitle": "1. Choose the photo",
+    "photoSectionTitle": "1. Choose photos",
     "photoSectionDescription": "If the image contains EXIF coordinates or capture time, the app will try to read them automatically. Without EXIF, you can still place the point manually on the map.",
     "exifReading": "Reading EXIF…",
     "exifReady": "EXIF coordinates / capture time supported",
@@ -168,12 +161,46 @@
       "cannotCreateThumbnailCanvas": "Could not create the thumbnail canvas.",
       "thumbnailFailed": "Failed to generate the thumbnail.",
       "searchFailed": "Place search failed.",
-      "selectPhoto": "Please choose a photo to submit.",
+      "selectPhoto": "Please choose at least one photo to submit.",
+      "tooManyPhotos": "You can submit up to {max} photos.",
       "titleRequired": "Please enter a title.",
       "exactRequired": "Please mark the exact shooting location on the map first.",
       "publicRequired": "Please confirm the public location first.",
       "sessionExpired": "Your session expired. Please log in again.",
       "submitFailed": "Submission failed."
+    }
+  },
+  "edit": {
+    "eyebrow": "Edit Post",
+    "title": "Edit this post.",
+    "description": "Changes are reviewed before they replace the public version.",
+    "loading": "Loading editable version...",
+    "submitButton": "Submit edit for review",
+    "submitting": "Submitting edit...",
+    "success": "Your edit is in review. The public version stays visible until approval.",
+    "removePhoto": "Remove photo",
+    "movePhotoEarlier": "Move photo earlier",
+    "movePhotoLater": "Move photo later",
+    "errors": {
+      "loadFailed": "Failed to load editable post."
+    }
+  },
+  "user": {
+    "eyebrow": "User Page",
+    "postsTitle": "Posts",
+    "visibleCount": "{count} item(s)",
+    "loading": "Loading posts...",
+    "editPost": "Edit post",
+    "pendingRevision": "Edit pending review",
+    "emptyTitle": "No visible posts",
+    "emptyDescription": "Approved posts will appear here.",
+    "status": {
+      "approved": "Approved",
+      "pending": "Pending",
+      "rejected": "Rejected"
+    },
+    "errors": {
+      "loadFailed": "Failed to load user page."
     }
   }
 }

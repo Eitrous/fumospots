@@ -71,13 +71,6 @@
     "untitledPost": "未命名投稿",
     "taiwanProvinceLabel": "TAIWAN PROVINCE"
   },
-  "legend": {
-    "title": "地图说明",
-    "description": "缩小时优先看分布与聚类，放大后会切换成缩略图标记，方便直接找到每张 fumo 旅照。",
-    "approvedPin": "已通过审核的标准图钉",
-    "thumbnailMarker": "放大后的照片缩略图标记",
-    "approximateMarker": "选择近似公开时，地图不会暴露精确拍摄点"
-  },
   "auth": {
     "eyebrow": "邮箱魔法链接登录",
     "title": "登录后即可投稿。",
@@ -168,12 +161,46 @@
       "cannotCreateThumbnailCanvas": "无法创建缩略图画布。",
       "thumbnailFailed": "缩略图生成失败。",
       "searchFailed": "地点搜索失败。",
-      "selectPhoto": "请先选择要投稿的照片。",
+      "selectPhoto": "请先选择至少一张要投稿的照片。",
+      "tooManyPhotos": "一次最多可投稿 {max} 张照片。",
       "titleRequired": "请输入标题。",
       "exactRequired": "请先在地图上标注精确拍摄位置。",
       "publicRequired": "请先确认公开展示的位置。",
       "sessionExpired": "登录状态已失效，请重新登录。",
       "submitFailed": "投稿失败。"
+    }
+  },
+  "edit": {
+    "eyebrow": "编辑作品",
+    "title": "修改这条投稿。",
+    "description": "修改会先进入审核，通过后才替换公开版本。",
+    "loading": "正在加载可编辑内容...",
+    "submitButton": "提交修改审核",
+    "submitting": "正在提交修改...",
+    "success": "修改已提交审核。审核通过前，公开版本会继续显示。",
+    "removePhoto": "移除照片",
+    "movePhotoEarlier": "照片前移",
+    "movePhotoLater": "照片后移",
+    "errors": {
+      "loadFailed": "可编辑内容加载失败。"
+    }
+  },
+  "user": {
+    "eyebrow": "用户主页",
+    "postsTitle": "投稿作品",
+    "visibleCount": "{count} 条",
+    "loading": "正在加载作品...",
+    "editPost": "编辑作品",
+    "pendingRevision": "修改待审核",
+    "emptyTitle": "暂无可见作品",
+    "emptyDescription": "通过审核的作品会显示在这里。",
+    "status": {
+      "approved": "已通过",
+      "pending": "待审核",
+      "rejected": "已驳回"
+    },
+    "errors": {
+      "loadFailed": "用户主页加载失败。"
     }
   }
 }
