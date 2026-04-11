@@ -1,25 +1,17 @@
-<script setup lang="ts">
-const { t } = useI18n()
-</script>
-
 <template>
-  <section class="workbench-panel workbench-panel--poster workbench-panel--home">
-    <p class="workbench-poster__hello">{{ t('workbench.posterGreeting') }}</p>
+  <section class="workbench-panel workbench-panel--home workbench-panel--home-quote">
+    <p class="workbench-home-quote__lead">And God said,</p>
 
-    <div class="workbench-poster__block">
-      <p class="workbench-poster__lead">{{ t('workbench.posterIntro') }}</p>
-      <h2 class="workbench-panel__title workbench-panel__title--poster">
-        {{ t('workbench.posterExplore') }}
-      </h2>
-    </div>
+    <i
+      class="workbench-home-quote__mark workbench-home-quote__mark--left fa-solid fa-quote-left"
+      aria-hidden="true"
+    />
 
-    <div class="workbench-poster__block">
-      <p class="workbench-poster__lead">{{ t('workbench.posterShareLead') }}</p>
-      <h2 class="workbench-panel__title workbench-panel__title--poster">
-        {{ t('workbench.posterShare') }}
-      </h2>
-    </div>
+    <h2 class="workbench-home-quote__title">Let there be Fumo</h2>
 
-    <p class="workbench-poster__closing">{{ t('workbench.posterClosing') }}</p>
+    <i
+      class="workbench-home-quote__mark workbench-home-quote__mark--right fa-solid fa-quote-right"
+      aria-hidden="true"
+    />
   </section>
 </template>

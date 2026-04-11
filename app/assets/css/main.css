@@ -8,6 +8,8 @@
   --ink: #1d1712;
   --ink-soft: rgba(56, 46, 38, 0.78);
   --ink-muted: rgba(92, 74, 58, 0.44);
+  /* --ink-soft: rgba(40, 38, 56, 0.78);
+  --ink-muted: rgba(65, 58, 92, 0.44); */
   --accent: #146f74;
   --accent-deep: #0e4f53;
   --teal: #1f8f95;
@@ -1396,9 +1398,10 @@ html[data-theme="dark"] .workbench-map-shell {
 
 .workbench-brand__word {
   display: block;
-  font-family: var(--font-display);
+  /* font-family:'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif; */
+  font-family:Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
   font-weight: 700;
-  letter-spacing: -0.08em;
+  letter-spacing: 0.05em;
 }
 
 .workbench-brand__word--top {
@@ -1539,6 +1542,55 @@ html[data-theme="dark"] .workbench-icon-button--primary:focus-visible {
   align-content: center;
   gap: clamp(2rem, 6vh, 4.2rem);
   text-align: center;
+}
+
+.workbench-panel--home-quote {
+  min-height: 100%;
+  align-content: center;
+  justify-items: center;
+  gap: clamp(1.35rem, 3.8vh, 2.8rem);
+  padding-block: clamp(1rem, 5vh, 4rem);
+  padding-bottom: 10em;
+}
+
+.workbench-home-quote__lead {
+  margin-bottom: 1em;
+  width: 100%;
+  color: var(--ink-soft);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-size: clamp(1rem, 3vw, 2rem);
+  line-height: 1.2;
+  text-align: left;
+}
+
+.workbench-home-quote__title {
+  margin: 0;
+  width: 100%;
+  color: var(--ink);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(1.1rem, 3.6vw, 2.7rem);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  text-align: center;
+}
+
+.workbench-home-quote__mark {
+  color: #16925f;
+  font-size: clamp(1.5rem, 4vw, 2.4rem);
+  line-height: 1;
+}
+
+.workbench-home-quote__mark--left {
+  justify-self: start;
+  margin-left: -0.8rem;
+}
+
+.workbench-home-quote__mark--right {
+  justify-self: end;
+  margin-right: -0.8rem;
 }
 
 .workbench-panel--detail {
@@ -2511,6 +2563,12 @@ html[data-theme="dark"] .locale-switcher__menu {
     padding-top: 0.2rem;
     gap: 1.8rem;
   }
+
+  .workbench-panel--home-quote {
+    min-height: 100%;
+    align-content: center;
+    padding-top: 0;
+  }
 }
 
 @media (max-width: 720px) {
@@ -2568,6 +2626,18 @@ html[data-theme="dark"] .locale-switcher__menu {
 
   .workbench-poster__closing {
     font-size: clamp(1.65rem, 8vw, 2.25rem);
+  }
+
+  .workbench-home-quote__lead {
+    font-size: clamp(1.2rem, 5.8vw, 1.9rem);
+  }
+
+  .workbench-home-quote__title {
+    font-size: clamp(1.9rem, 8.2vw, 3rem);
+  }
+
+  .workbench-home-quote__mark {
+    font-size: clamp(1.8rem, 8.4vw, 2.7rem);
   }
 
   .workbench-detail-media img {
