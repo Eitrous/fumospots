@@ -4,7 +4,7 @@ import { MAP_DEFAULT_STYLE_URL } from './shared/fumo'
 export default defineNuxtConfig({
   compatibilityDate: '2026-04-10',
   devtools: { enabled: true },
-  modules: ['@nuxtjs/i18n'],
+  modules: ['@nuxtjs/i18n', '@vercel/analytics'],
   css: [
     '~/assets/css/main.css',
     '@fortawesome/fontawesome-free/css/all.min.css',
