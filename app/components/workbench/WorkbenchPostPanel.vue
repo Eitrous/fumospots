@@ -463,14 +463,14 @@ onBeforeUnmount(() => {
           </p>
           <p>
             <i class="button-icon fa-solid fa-location-dot" aria-hidden="true" />
-            <p v-if="[post.cityName, post.regionName, post.countryName].filter(Boolean).length" class="support-copy">
+            <span v-if="[post.cityName, post.regionName, post.countryName].filter(Boolean).length" class="support-copy">
               {{ [post.cityName, post.regionName, post.countryName].filter(Boolean).join(' / ') }}
-            </p>
+            </span>
             <span>{{ post.placeName || t('post.unnamedPlaceName') }}</span>
           </p>
           <p v-if="post.privacyMode === 'exact'">
             <i class="button-icon fa-solid fa-crosshairs" aria-hidden="true" />
-            <p class="support-copy">{{ formatLatLng(post.publicLocation) }}</p>
+            <span class="support-copy">{{ formatLatLng(post.publicLocation) }}</span>
           </p>
           <p>
             <i class="button-icon fa-solid fa-clock" aria-hidden="true" />

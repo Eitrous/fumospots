@@ -1186,14 +1186,6 @@ html[data-theme="dark"] .workbench-panel--submit > section.field-grid {
   flex: 1 1 200px;
 }
 
-.workbench-sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 58;
-  border: 0;
-  background: rgba(18, 14, 10, 0.4);
-}
-
 .empty-state--inline {
   min-height: 0;
   padding: 1rem 0;
@@ -2508,60 +2500,133 @@ html[data-theme="dark"] .locale-switcher__menu {
   transform: translateY(16px);
 }
 
-.workbench-sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 58;
-  border: 0;
-  background: rgba(13, 11, 10, 0.32);
-}
-
 @media (max-width: 980px) {
   .workbench-page {
     display: block;
     min-height: 100svh;
-    height: auto;
-    overflow: clip;
+    height: 100svh;
+    overflow: hidden;
   }
 
   .workbench-map-shell {
     min-height: 100svh;
+    height: 100svh;
+  }
+
+  .workbench-page .map-stage,
+  .workbench-page .map-canvas {
+    min-height: 100svh;
+    height: 100svh;
   }
 
   .workbench-sidebar {
-    --workbench-peek: 172px;
+    --workbench-peek: clamp(84px, 22vw, 112px);
+    --workbench-workbench-height: min(84svh, 780px);
+    --workbench-detail-height: calc(100svh - 12px);
+    --workbench-visible-height: var(--workbench-peek);
+    --workbench-current-offset: calc(var(--workbench-detail-height) - var(--workbench-peek));
     position: fixed;
     inset: auto 0 0;
     z-index: 60;
+    height: var(--workbench-detail-height);
+    min-height: 0;
     border-right: 0;
     background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     pointer-events: none;
+  }
+
+  html[data-theme="dark"] .workbench-sidebar {
+    background: transparent;
+  }
+
+  .workbench-sidebar.is-workbench {
+    --workbench-visible-height: var(--workbench-workbench-height);
+    --workbench-current-offset: calc(var(--workbench-detail-height) - var(--workbench-workbench-height));
+  }
+
+  .workbench-sidebar.is-detail {
+    --workbench-visible-height: var(--workbench-detail-height);
+    --workbench-current-offset: 0px;
   }
 
   .workbench-sidebar__surface {
     --workbench-sidebar-inline-pad: 1rem;
     pointer-events: auto;
-    max-height: min(84svh, 780px);
-    padding: 1rem 0 calc(1rem + env(safe-area-inset-bottom));
-    border-radius: 30px 30px 0 0;
-    background: rgba(241, 240, 236, 0.96);
-    box-shadow: 0 -26px 54px rgba(13, 11, 10, 0.22);
-    transform: translateY(calc(100% - var(--workbench-peek)));
-    transition: transform 260ms var(--motion-smooth);
+    height: var(--workbench-detail-height);
+    max-height: none;
+    padding: 0.75rem 0 calc(0.9rem + env(safe-area-inset-bottom));
+    border-radius: 28px 28px 0 0;
+    border-top: 1px solid rgba(29, 23, 18, 0.08);
+    background: rgba(241, 240, 236, 0.86);
+    backdrop-filter: blur(24px) saturate(0.92);
+    box-shadow: 0 -18px 42px rgba(13, 11, 10, 0.16);
     overflow: hidden;
+    will-change: transform;
+    transition: transform 260ms var(--motion-smooth);
+  }
+
+  .workbench-sidebar.is-peek .workbench-sidebar__surface,
+  .workbench-sidebar.is-workbench .workbench-sidebar__surface,
+  .workbench-sidebar.is-detail .workbench-sidebar__surface {
+    transform: translateY(calc(var(--workbench-current-offset) + var(--mobile-drawer-drag-offset, 0px)));
   }
 
   html[data-theme="dark"] .workbench-sidebar__surface {
-    background: rgba(31, 39, 46, 0.96);
+    border-top-color: rgba(136, 154, 166, 0.14);
+    background: rgba(31, 39, 46, 0.86);
+    box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.28);
   }
 
-  .workbench-sidebar.is-open .workbench-sidebar__surface {
-    transform: translateY(0);
+  .workbench-sidebar.is-dragging .workbench-sidebar__surface {
+    transition: none;
+  }
+
+  .workbench-sidebar.is-peek .workbench-sidebar__surface {
+    cursor: pointer;
+  }
+
+  .workbench-sidebar.is-peek .workbench-brand:focus-visible {
+    outline: 2px solid rgba(22, 146, 95, 0.68);
+    outline-offset: 4px;
+  }
+
+  .workbench-sidebar__chrome {
+    min-height: calc(var(--workbench-peek) - 1.65rem);
+    padding: 0 var(--workbench-sidebar-inline-pad) 0.65rem;
+    touch-action: none;
+  }
+
+  .workbench-sidebar__header {
+    min-height: calc(var(--workbench-peek) - 2.35rem);
+    align-items: center;
+  }
+
+  .workbench-sidebar.is-dragging .workbench-sidebar__chrome {
+    cursor: grabbing;
+  }
+
+  .workbench-tools {
+    transition:
+      opacity 180ms var(--motion-smooth),
+      transform 180ms var(--motion-smooth);
   }
 
   .workbench-sidebar__body {
-    max-height: calc(min(84svh, 780px) - var(--workbench-peek));
+    max-height: calc(var(--workbench-visible-height) - var(--workbench-peek));
     padding-bottom: 0.25rem;
+    opacity: 1;
+    overscroll-behavior: contain;
+    transition:
+      opacity 180ms var(--motion-smooth),
+      visibility 180ms var(--motion-smooth);
+  }
+
+  .workbench-sidebar.is-peek .workbench-sidebar__body {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
   }
 
   .workbench-panel--home {
@@ -2576,16 +2641,38 @@ html[data-theme="dark"] .locale-switcher__menu {
     align-content: center;
     padding-top: 0;
   }
+
+  .workbench-sidebar.is-detail .workbench-panel--detail {
+    min-height: calc(var(--workbench-detail-height) - var(--workbench-peek));
+  }
+
+  .workbench-sidebar.is-detail .workbench-detail-hero {
+    height: clamp(340px, 58svh, 620px);
+  }
+
+  .workbench-sidebar.is-detail .workbench-detail-body {
+    padding-top: 1.15rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .workbench-sidebar.is-detail .workbench-detail-lines {
+    gap: 0.75rem;
+    padding: 0.9rem 0;
+  }
 }
 
 @media (max-width: 720px) {
   .workbench-sidebar {
-    --workbench-peek: 186px;
+    --workbench-peek: clamp(88px, 24vw, 108px);
+    --workbench-workbench-height: 84svh;
+    --workbench-detail-height: calc(100svh - 12px);
   }
 
   .workbench-sidebar__surface {
     --workbench-sidebar-inline-pad: 0.9rem;
     padding-inline: 0;
+    padding-top: 0.7rem;
+    border-radius: 26px 26px 0 0;
   }
 
   .workbench-brand__word--top {
@@ -2649,6 +2736,10 @@ html[data-theme="dark"] .locale-switcher__menu {
 
   .workbench-detail-media img {
     max-height: 320px;
+  }
+
+  .workbench-sidebar.is-detail .workbench-detail-hero {
+    height: clamp(320px, 56svh, 560px);
   }
 
 }
