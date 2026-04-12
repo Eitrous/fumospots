@@ -22,6 +22,7 @@ const REQUEST_IP_FALLBACK = 'unknown'
 const WEBHOOK_TIMEOUT_MS = 1500
 
 let alertRedis: Redis | null = null
+let warnedAlertsDisabled = false
 let warnedMissingWebhook = false
 const localCooldowns = new Map<string, number>()
 
@@ -98,11 +99,20 @@ export const notifySecurityAlert = async (
   input: SecurityAlertInput
 ) => {
   try {
+    const config = useRuntimeConfig(event)
+
+    if (!config.securityAlertsEnabled) {
+      if (!warnedAlertsDisabled) {
+        warnedAlertsDisabled = true
+        console.warn('Security alert webhook is disabled because SECURITY_ALERTS_ENABLED is not true.')
+      }
+      return
+    }
+
     if (!await shouldSendAlert(input.fingerprint)) {
       return
     }
 
-    const config = useRuntimeConfig(event)
     const webhookUrl = config.securityAlertWebhookUrl || process.env.SECURITY_ALERT_WEBHOOK_URL
     const webhookToken = config.securityAlertWebhookToken || process.env.SECURITY_ALERT_WEBHOOK_TOKEN
     const url = getRequestURL(event)

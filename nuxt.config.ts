@@ -45,8 +45,11 @@ export default defineNuxtConfig({
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     geocodeBaseUrl: process.env.GEOCODE_BASE_URL || 'https://nominatim.openstreetmap.org',
     geocodeUserAgent: process.env.GEOCODE_USER_AGENT || 'fumotravel/1.0',
+    securityAlertsEnabled: process.env.SECURITY_ALERTS_ENABLED === 'true',
     securityAlertWebhookUrl: process.env.SECURITY_ALERT_WEBHOOK_URL,
     securityAlertWebhookToken: process.env.SECURITY_ALERT_WEBHOOK_TOKEN,
+    telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+    telegramChatId: process.env.TELEGRAM_CHAT_ID,
     public: {
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000',
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,

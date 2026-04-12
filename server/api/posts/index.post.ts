@@ -6,6 +6,7 @@ import {
   requireAuthenticatedUser
 } from '~~/server/utils/supabase'
 import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
+import { notifyTelegramNewSubmission } from '~~/server/utils/telegramNotification'
 import {
   normalizePostPayload,
   photoPayloadsToRows,
@@ -66,6 +67,8 @@ export default defineEventHandler(async (event) => {
       statusMessage: photosError.message || 'Failed to save post photos.'
     })
   }
+
+  await notifyTelegramNewSubmission(event)
 
   setResponseStatus(event, 201)
   return data

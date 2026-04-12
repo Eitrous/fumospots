@@ -17,8 +17,8 @@
     "loadingAuth": "ログイン状態を同期中…",
     "sending": "送信中…",
     "saving": "保存中…",
-    "notProvided": "未設定",
-    "notAnnotated": "未指定",
+    "notProvided": "未提供",
+    "notAnnotated": "未注記",
     "privacyExact": "正確な公開位置",
     "privacyApprox": "概略の公開位置",
     "publicLocation": "公開位置",
@@ -55,7 +55,7 @@
       },
       "publicLocation": {
         "title": "公開精度",
-        "body": "地図には公開位置だけが表示されます。"
+        "body": "地図には公開位置だけを表示し、正確な撮影位置は表示しません。"
       },
       "submission": {
         "title": "投稿内容",
@@ -106,8 +106,8 @@
         "submit": "ログインリンクを送信"
       },
       "register": {
-        "title": "登録してパスワードを設定",
-        "description": "新しいアカウントには先にパスワードが必要です",
+        "title": "登録",
+        "description": "",
         "submit": "登録"
       }
     },
@@ -127,7 +127,7 @@
     "description": "この ID は公開投稿ごとに表示されます",
     "label": "作者 ID",
     "hint": "例: `reimu_tabi`、`alice_fumo`、`world_trip_01`。",
-    "submit": "設定を保存",
+    "submit": "設定完了",
     "saving": "保存中…",
     "errors": {
       "required": "作者 ID を入力してください。",
@@ -166,10 +166,10 @@
     }
   },
   "submit": {
-    "eyebrow": "写真を投稿",
-    "title": "写真をアップロードして公開位置を決める。",
+    "eyebrow": "投稿",
+    "title": "写真をアップロード",
     "description": "公開サイトには公開位置だけが表示されます。",
-    "photoSectionTitle": "1. 写真を選ぶ",
+    "photoSectionTitle": "写真を選ぶ",
     "photoSectionDescription": "画像に EXIF の座標や撮影日時があれば自動で読み取りを試みます。EXIF がなくても地図上で手動指定できます。",
     "exifReading": "EXIF を読み込み中…",
     "exifReady": "EXIF 座標 / 撮影日時に対応",
@@ -182,22 +182,22 @@
     "capturedAtLabel": "撮影日時",
     "privacyApprox": "概略位置を公開",
     "privacyExact": "正確な座標を公開",
-    "locationSectionTitle": "2. 地点を指定する",
+    "locationSectionTitle": "地点を指定",
     "locationSectionDescription": "地図をクリックして正確な位置を設定します。概略公開を選んだ場合は、青いマーカーをドラッグして公開位置を調整できます。",
     "exactLocationLabel": "正確な位置 {value}",
     "publicLocationLabel": "公開位置 {value}",
     "searchLabel": "場所検索",
-    "searchPlaceholder": "例: Hakone Shrine, Japan",
+    "searchPlaceholder": "例: Hakurei Shrine, Gensokyo",
     "searching": "検索中…",
     "searchButton": "場所を検索",
     "publicPlaceLabel": "公開する場所名",
-    "publicPlacePlaceholder": "例: Tokyo, Japan",
+    "publicPlacePlaceholder": "例: Human Village, Gensokyo",
     "countryLabel": "国",
-    "countryPlaceholder": "Japan",
+    "countryPlaceholder": "Gensokyo",
     "regionLabel": "地域 / 都道府県",
-    "regionPlaceholder": "Tokyo",
+    "regionPlaceholder": "Youkai Mountain",
     "cityLabel": "都市 / スポット",
-    "cityPlaceholder": "Akihabara",
+    "cityPlaceholder": "Hakurei Shrine",
     "submitButton": "審査へ送信",
     "submitting": "送信中…",
     "backToOverview": "地図の概要へ戻る",

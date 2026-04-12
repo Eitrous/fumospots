@@ -96,9 +96,14 @@ Set these private environment variables in Vercel Project Settings -> Environmen
 
 - `UPSTASH_REDIS_REST_URL`
 - `UPSTASH_REDIS_REST_TOKEN`
+- `SECURITY_ALERTS_ENABLED` (set to `true` only when webhook traffic alerts should be sent)
 - `SECURITY_ALERT_WEBHOOK_URL`
 - `SECURITY_ALERT_WEBHOOK_TOKEN` (optional)
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
 
-Security headers are emitted by Nitro middleware. CSP starts in `Content-Security-Policy-Report-Only` mode and reports to `/api/security/csp-report`; review reports before switching to an enforcing CSP header.
+Security headers are emitted by Nitro middleware. CSP starts in `Content-Security-Policy-Report-Only` mode and reports to `/api/security/csp-report`; review reports before switching to an enforcing CSP header. Traffic alert webhooks are disabled unless `SECURITY_ALERTS_ENABLED=true`.
+
+Telegram submission notifications use `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. When a new post is submitted, the bot sends the submission time and the current pending review count.
 
 当前仓库已可通过生产构建。构建阶段会提示较大的客户端 chunk，这是 MapLibre 与图片处理依赖带来的体积警告，不会阻止产物生成。
