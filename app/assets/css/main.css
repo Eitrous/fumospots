@@ -1386,7 +1386,13 @@ html[data-theme="dark"] .workbench-map-shell {
 .workbench-brand {
   display: grid;
   min-width: 0;
-  line-height: 0.84;
+}
+
+.workbench-brand__image {
+  display: block;
+  width: min(15.5rem, 100%);
+  height: auto;
+  user-select: none;
 }
 
 .workbench-brand--exit {
@@ -2758,7 +2764,7 @@ html[data-theme="dark"] .user-menu__identity {
   }
 
   .workbench-tools {
-    gap: 0.05rem;
+    gap: 0.28rem;
   }
 
   .workbench-icon-button {

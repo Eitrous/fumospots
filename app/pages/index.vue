@@ -47,22 +47,13 @@ const nextPath = computed(() => workbenchState.value.nextPath)
 const submitPath = computed(() => router.resolve(createWorkbenchLocation('submit')).fullPath)
 const isDetailPanel = computed(() => currentPanel.value === 'post')
 const showHomeBrand = computed(() => currentPanel.value === 'info')
+const brandImageSrc = computed(() => isDark.value ? '/fumospots-brand-dark.svg' : '/fumospots-brand.svg')
 const panelKey = computed(() => {
   return (currentPanel.value === 'post' || currentPanel.value === 'edit')
     ? `${currentPanel.value}-${selectedPostId.value}`
     : currentPanel.value === 'user'
       ? `user-${selectedUsername.value}`
     : currentPanel.value
-})
-
-const brandWords = computed(() => {
-  const parts = t('common.brand').split(' ')
-  const top = parts[0] || t('common.brand')
-  const bottom = parts.slice(1).join(' ') || top
-  return {
-    top,
-    bottom
-  }
 })
 
 const viewerHandle = computed(() => {
@@ -529,8 +520,12 @@ onBeforeUnmount(() => {
               @keydown.enter.stop.prevent="handleMobileDrawerKeydown"
               @keydown.space.stop.prevent="handleMobileDrawerKeydown"
             >
-              <span class="workbench-brand__word workbench-brand__word--top">{{ brandWords.top }}</span>
-              <span class="workbench-brand__word workbench-brand__word--bottom">{{ brandWords.bottom }}</span>
+              <img
+                class="workbench-brand__image"
+                :src="brandImageSrc"
+                :alt="t('common.brand')"
+                draggable="false"
+              >
             </div>
             <button
               v-else-if="isDetailPanel"
