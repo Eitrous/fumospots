@@ -1,5 +1,10 @@
 import { getHeader, getQuery } from 'h3'
 import { normalizeGeocodeResult } from '~~/server/utils/geocode'
+import {
+  enforceRateLimit,
+  getRateLimitIdentifier,
+  isPublicNominatimBaseUrl
+} from '~~/server/utils/rateLimit'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
@@ -14,6 +19,11 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: '搜索关键词至少需要 2 个字符'
     })
+  }
+
+  await enforceRateLimit(event, 'geocodeIp', getRateLimitIdentifier(event))
+  if (isPublicNominatimBaseUrl(config.geocodeBaseUrl)) {
+    await enforceRateLimit(event, 'geocodeGlobal', 'nominatim')
   }
 
   try {

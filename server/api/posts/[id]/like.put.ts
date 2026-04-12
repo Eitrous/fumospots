@@ -5,6 +5,7 @@ import {
   ensureProfile,
   requireAuthenticatedUser
 } from '~~/server/utils/supabase'
+import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
 
 export default defineEventHandler(async (event): Promise<PostLikeResponse> => {
   const id = Number(event.context.params?.id)
@@ -12,6 +13,8 @@ export default defineEventHandler(async (event): Promise<PostLikeResponse> => {
   if (Number.isNaN(id)) {
     throw createError({ statusCode: 400, statusMessage: 'Invalid id' })
   }
+
+  await enforceRateLimit(event, 'likeIp', getRateLimitIdentifier(event))
 
   const body = await readBody<PostLikePayload>(event)
   if (typeof body?.liked !== 'boolean') {
@@ -22,6 +25,9 @@ export default defineEventHandler(async (event): Promise<PostLikeResponse> => {
   }
 
   const { user } = await requireAuthenticatedUser(event)
+  await enforceRateLimit(event, 'likeUser', user.id)
+  await enforceRateLimit(event, 'likePostUser', `${user.id}:${id}`)
+
   await ensureProfile(event, user)
 
   const supabase = createAdminServerClient(event)

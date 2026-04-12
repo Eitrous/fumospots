@@ -13,6 +13,8 @@
     "@fortawesome/fontawesome-free": "^7.2.0",
     "@nuxtjs/i18n": "^10.2.4",
     "@supabase/supabase-js": "^2.103.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.37.0",
     "exifr": "^7.1.3",
     "maplibre-gl": "^5.22.0",
     "nuxt": "^4.4.2",

@@ -1,6 +1,7 @@
 import { getQuery } from 'h3'
 import type { PublicMapCollection } from '~~/shared/fumo'
 import { createAdminServerClient } from '~~/server/utils/supabase'
+import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
 
 type MapQuery = {
   west?: string
@@ -23,6 +24,8 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Invalid bbox'
     })
   }
+
+  await enforceRateLimit(event, 'mapIp', getRateLimitIdentifier(event))
 
   const supabase = createAdminServerClient(event)
 

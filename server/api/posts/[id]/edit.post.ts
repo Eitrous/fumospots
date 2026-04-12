@@ -1,6 +1,7 @@
 import { getRouterParam, readBody } from 'h3'
 import type { EditPostPayload } from '~~/shared/fumo'
 import { createAdminServerClient, requireAuthenticatedUser } from '~~/server/utils/supabase'
+import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
 import {
   normalizePostPayload,
   photoPayloadsToRows,
@@ -17,8 +18,12 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  await enforceRateLimit(event, 'submitIp', getRateLimitIdentifier(event))
+
   const body = await readBody<EditPostPayload>(event)
   const { user } = await requireAuthenticatedUser(event)
+  await enforceRateLimit(event, 'submitUser', user.id)
+
   const payload = normalizePostPayload(body, user.id)
   const supabase = createAdminServerClient(event)
   const { data: post, error: postError } = await supabase

@@ -5,6 +5,7 @@ import {
   ensureProfile,
   requireAuthenticatedUser
 } from '~~/server/utils/supabase'
+import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
 import {
   normalizePostPayload,
   photoPayloadsToRows,
@@ -12,8 +13,12 @@ import {
 } from '~~/server/utils/posts'
 
 export default defineEventHandler(async (event) => {
+  await enforceRateLimit(event, 'submitIp', getRateLimitIdentifier(event))
+
   const body = await readBody<SubmitPostPayload>(event)
   const { user } = await requireAuthenticatedUser(event)
+  await enforceRateLimit(event, 'submitUser', user.id)
+
   const profile = await ensureProfile(event, user)
 
   if (!profile.username) {
