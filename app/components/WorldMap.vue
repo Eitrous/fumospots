@@ -258,7 +258,7 @@ const setupMapLayers = () => {
     data: collection.value,
     cluster: true,
     clusterMaxZoom: 10,
-    clusterRadius: 48
+    clusterRadius: 16
   })
 
   mapRef.value.addSource('selected-post', {
