@@ -190,6 +190,7 @@
     "description": "公开页面只使用公开位置。",
     "photoSectionTitle": "选择照片",
     "photoSectionDescription": "如果图片里带有 EXIF 坐标和拍摄时间，系统会尝试自动读取；没有 EXIF 也可以在地图上手动选点。",
+    "addPhoto": "添加照片",
     "exifReading": "正在读取 EXIF…",
     "exifReady": "已支持 EXIF 坐标 / 拍摄时间",
     "reverseLookup": "正在解析地点名称…",

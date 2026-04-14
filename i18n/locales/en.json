@@ -190,6 +190,7 @@
     "description": "Only the public point appears on the public site.",
     "photoSectionTitle": "Choose photos",
     "photoSectionDescription": "If the image contains EXIF coordinates or capture time, the app will try to read them automatically. Without EXIF, you can still place the point manually on the map.",
+    "addPhoto": "Add photo",
     "exifReading": "Reading EXIF…",
     "exifReady": "EXIF coordinates / capture time supported",
     "reverseLookup": "Resolving place name…",

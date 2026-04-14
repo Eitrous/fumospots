@@ -190,6 +190,7 @@
     "description": "公開サイトには公開位置だけが表示されます。",
     "photoSectionTitle": "写真を選ぶ",
     "photoSectionDescription": "画像に EXIF の座標や撮影日時があれば自動で読み取りを試みます。EXIF がなくても地図上で手動指定できます。",
+    "addPhoto": "写真を追加",
     "exifReading": "EXIF を読み込み中…",
     "exifReady": "EXIF 座標 / 撮影日時に対応",
     "reverseLookup": "地名を解析中…",

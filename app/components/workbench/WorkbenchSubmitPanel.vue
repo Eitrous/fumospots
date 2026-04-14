@@ -41,6 +41,7 @@ const { invalidateUserPage } = useUserPageCache()
 const isEditMode = computed(() => props.mode === 'edit')
 const selectedPhotos = ref<SelectedPhoto[]>([])
 const fileInputKey = ref(0)
+const photoInputRef = ref<HTMLInputElement | null>(null)
 
 const title = ref('')
 const body = ref('')
@@ -60,8 +61,18 @@ const detectingExif = ref(false)
 const reverseLookupPending = ref(false)
 const loadingEditable = ref(false)
 const uploading = ref(false)
+const uploadProgressStepCount = ref(0)
+const uploadProgressStepDone = ref(0)
 const errorMessage = ref('')
 const successMessage = ref('')
+
+const uploadProgressPercent = computed(() => {
+  if (!uploadProgressStepCount.value) {
+    return 0
+  }
+
+  return Math.min(100, Math.round((uploadProgressStepDone.value / uploadProgressStepCount.value) * 100))
+})
 
 const submitNextPath = computed(() => {
   return isEditMode.value && props.postId
@@ -330,6 +341,14 @@ const extractCoverExifIfEmpty = async () => {
   }
 }
 
+const openPhotoPicker = () => {
+  if (uploading.value || loadingEditable.value || selectedPhotos.value.length >= MAX_POST_PHOTOS) {
+    return
+  }
+
+  photoInputRef.value?.click()
+}
+
 const onFileChange = async (event: Event) => {
   const input = event.target as HTMLInputElement
   const files = Array.from(input.files || [])
@@ -479,6 +498,37 @@ const canSubmit = computed(() => {
   )
 })
 
+const canAddPhoto = computed(() => selectedPhotos.value.length < MAX_POST_PHOTOS)
+
+const resetUploadProgress = () => {
+  uploadProgressStepCount.value = 0
+  uploadProgressStepDone.value = 0
+}
+
+const startUploadProgress = (photos: SelectedPhoto[]) => {
+  const uploadSteps = photos.reduce((count, photo) => {
+    if (!photo.file) {
+      return count
+    }
+
+    return count + 1 + (photo.thumbnailFile ? 1 : 0)
+  }, 0)
+
+  uploadProgressStepCount.value = Math.max(1, uploadSteps + 1)
+  uploadProgressStepDone.value = 0
+}
+
+const advanceUploadProgress = (step = 1) => {
+  if (!uploadProgressStepCount.value) {
+    return
+  }
+
+  uploadProgressStepDone.value = Math.min(
+    uploadProgressStepCount.value,
+    uploadProgressStepDone.value + step
+  )
+}
+
 const uploadPhoto = async (
   photo: SelectedPhoto,
   index: number,
@@ -518,6 +568,7 @@ const uploadPhoto = async (
   }
 
   uploadedPaths.push(originalPath)
+  advanceUploadProgress()
 
   if (photo.thumbnailFile && thumbPath) {
     const { error: uploadThumbError } = await supabase
@@ -533,6 +584,7 @@ const uploadPhoto = async (
     }
 
     uploadedPaths.push(thumbPath)
+    advanceUploadProgress()
   }
 
   return {
@@ -584,6 +636,7 @@ const submitPost = async () => {
     : crypto.randomUUID()
   const uploadedPaths: string[] = []
   const photosToUpload = selectedPhotos.value.slice()
+  startUploadProgress(photosToUpload)
 
   try {
     const photos = []
@@ -610,6 +663,7 @@ const submitPost = async () => {
       headers: auth.authHeaders.value,
       body: payload
     })
+    advanceUploadProgress()
 
     const nextSuccessMessage = isEditMode.value ? t('edit.success') : t('submit.success')
     const viewerUsername = viewer.profile.username
@@ -643,6 +697,7 @@ const submitPost = async () => {
     errorMessage.value = error instanceof Error ? error.message : t('submit.errors.submitFailed')
   } finally {
     uploading.value = false
+    resetUploadProgress()
   }
 }
 
@@ -665,6 +720,23 @@ onBeforeUnmount(() => {
   <section class="workbench-panel workbench-panel--submit">
     <span class="eyebrow">{{ isEditMode ? t('edit.eyebrow') : t('submit.eyebrow') }}</span>
     <h2 class="workbench-panel__title workbench-panel__title--poster">{{ isEditMode ? t('edit.title') : t('submit.title') }}</h2>
+    <div
+      v-if="uploading"
+      class="submit-upload-progress"
+      role="progressbar"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      :aria-valuenow="uploadProgressPercent"
+      :aria-valuetext="`${uploadProgressPercent}%`"
+    >
+      <div class="submit-upload-progress__bar">
+        <span
+          class="submit-upload-progress__fill"
+          :style="{ width: `${uploadProgressPercent}%` }"
+        />
+      </div>
+      <span class="submit-upload-progress__text">{{ uploadProgressPercent }}%</span>
+    </div>
     <p v-if="loadingEditable" class="status-inline">{{ t('edit.loading') }}</p>
 
     <section class="workbench-stack-section">
@@ -679,8 +751,9 @@ onBeforeUnmount(() => {
 
       <div class="photo-drop">
         <input
+          ref="photoInputRef"
           :key="fileInputKey"
-          class="field-input"
+          class="photo-input"
           type="file"
           accept="image/*"
           multiple
@@ -688,7 +761,7 @@ onBeforeUnmount(() => {
           @change="onFileChange"
         >
 
-        <ul v-if="selectedPhotos.length" class="photo-preview-list">
+        <ul class="photo-preview-list">
           <li
             v-for="(photo, index) in selectedPhotos"
             :key="photo.id"
@@ -729,6 +802,18 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <span class="photo-preview-item__name">{{ photo.name }}</span>
+          </li>
+
+          <li v-if="canAddPhoto" class="photo-preview-item photo-preview-item--add">
+            <button
+              class="photo-preview photo-preview--add"
+              type="button"
+              :aria-label="t('submit.addPhoto')"
+              :disabled="uploading || loadingEditable"
+              @click="openPhotoPicker"
+            >
+              <i class="fa-solid fa-plus" aria-hidden="true" />
+            </button>
           </li>
         </ul>
       </div>
@@ -783,66 +868,67 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
+      <div class="field-grid field-grid--two">
+        <div class="field-grid">
+          <label class="field-label">
+            <span>{{ t('submit.searchLabel') }}</span>
+            <input
+              v-model="searchQuery"
+              class="field-input"
+              :placeholder="t('submit.searchPlaceholder')"
+              @keyup.enter="runPlaceSearch"
+            >
+          </label>
+
+          <ul v-if="searchResults.length" class="search-results">
+            <li v-for="result in searchResults" :key="`${result.lat}-${result.lng}-${result.displayName}`">
+              <div
+                class="search-results__item"
+                role="button"
+                tabindex="0"
+                @click="selectSearchResult(result)"
+                @keydown.enter.prevent="selectSearchResult(result)"
+                @keydown.space.prevent="selectSearchResult(result)"
+              >
+                <strong>{{ result.placeName }}</strong>
+                <span>{{ result.displayName }}</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <div class="field-grid">
+          <label class="field-label">
+            <span>{{ t('submit.publicPlaceLabel') }}</span>
+            <input v-model="placeName" class="field-input" :placeholder="t('submit.publicPlacePlaceholder')">
+          </label>
+
+          <div class="field-grid field-grid--two">
+            <label class="field-label">
+              <span>{{ t('submit.countryLabel') }}</span>
+              <input v-model="countryName" class="field-input" :placeholder="t('submit.countryPlaceholder')">
+            </label>
+            <label class="field-label">
+              <span>{{ t('submit.regionLabel') }}</span>
+              <input v-model="regionName" class="field-input" :placeholder="t('submit.regionPlaceholder')">
+            </label>
+          </div>
+
+          <label class="field-label">
+            <span>{{ t('submit.cityLabel') }}</span>
+            <input v-model="cityName" class="field-input" :placeholder="t('submit.cityPlaceholder')">
+          </label>
+        </div>
+      </div>
+
       <LocationPickerMap
+        class="workbench-submit-map"
         :exact-location="exactLocation"
         :public-location="publicLocation"
         :privacy-mode="privacyMode"
         @update:exact-location="handleExactLocationUpdate"
         @update:public-location="handlePublicLocationUpdate"
       />
-    </section>
-
-    <section class="workbench-stack-section field-grid field-grid--two">
-      <div class="field-grid">
-        <label class="field-label">
-          <span>{{ t('submit.searchLabel') }}</span>
-          <input
-            v-model="searchQuery"
-            class="field-input"
-            :placeholder="t('submit.searchPlaceholder')"
-            @keyup.enter="runPlaceSearch"
-          >
-        </label>
-
-        <ul v-if="searchResults.length" class="search-results">
-          <li v-for="result in searchResults" :key="`${result.lat}-${result.lng}-${result.displayName}`">
-            <div
-              class="search-results__item"
-              role="button"
-              tabindex="0"
-              @click="selectSearchResult(result)"
-              @keydown.enter.prevent="selectSearchResult(result)"
-              @keydown.space.prevent="selectSearchResult(result)"
-            >
-              <strong>{{ result.placeName }}</strong>
-              <span>{{ result.displayName }}</span>
-            </div>
-          </li>
-        </ul>
-      </div>
-
-      <div class="field-grid">
-        <label class="field-label">
-          <span>{{ t('submit.publicPlaceLabel') }}</span>
-          <input v-model="placeName" class="field-input" :placeholder="t('submit.publicPlacePlaceholder')">
-        </label>
-
-        <div class="field-grid field-grid--two">
-          <label class="field-label">
-            <span>{{ t('submit.countryLabel') }}</span>
-            <input v-model="countryName" class="field-input" :placeholder="t('submit.countryPlaceholder')">
-          </label>
-          <label class="field-label">
-            <span>{{ t('submit.regionLabel') }}</span>
-            <input v-model="regionName" class="field-input" :placeholder="t('submit.regionPlaceholder')">
-          </label>
-        </div>
-
-        <label class="field-label">
-          <span>{{ t('submit.cityLabel') }}</span>
-          <input v-model="cityName" class="field-input" :placeholder="t('submit.cityPlaceholder')">
-        </label>
-      </div>
     </section>
 
     <p v-if="successMessage" class="success-banner">{{ successMessage }}</p>
