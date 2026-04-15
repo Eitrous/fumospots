@@ -276,7 +276,16 @@ const setupMapLayers = () => {
     source: sourceName,
     filter: ['has', 'point_count'],
     paint: {
-      'circle-radius': ['step', ['get', 'point_count'], 18, 12, 22, 36, 28, 88, 34],
+      'circle-radius': [
+        'interpolate',
+        ['linear'],
+        ['get', 'point_count'],
+        1, 11,
+        8, 18,
+        25, 28,
+        70, 40,
+        160, 54
+      ],
       'circle-color': primaryColor,
       'circle-stroke-width': 2,
       'circle-stroke-color': contrastColor

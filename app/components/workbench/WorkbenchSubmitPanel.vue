@@ -11,6 +11,7 @@ import { MAX_POST_PHOTOS, STORAGE_BUCKET } from '~~/shared/fumo'
 type SelectedPhoto = {
   id: string
   file: File | null
+  sourceFile: File | null
   name: string
   imagePath: string | null
   thumbPath: string | null
@@ -130,6 +131,26 @@ const toExistingPhotoName = (imagePath: string, index: number) => {
   return folder ? `${folder}/${segments.at(-1) || `photo-${index + 1}`}` : `photo-${index + 1}`
 }
 
+const getAdaptiveWebpQuality = (bytes: number) => {
+  if (bytes >= 12 * 1024 * 1024) {
+    return 0.68
+  }
+
+  if (bytes >= 8 * 1024 * 1024) {
+    return 0.72
+  }
+
+  if (bytes >= 4 * 1024 * 1024) {
+    return 0.76
+  }
+
+  if (bytes >= 2 * 1024 * 1024) {
+    return 0.8
+  }
+
+  return 0.84
+}
+
 const applyEditablePost = (detail: EditablePostDetail) => {
   title.value = detail.title
   body.value = detail.body || ''
@@ -147,6 +168,7 @@ const applyEditablePost = (detail: EditablePostDetail) => {
   selectedPhotos.value = detail.photos.map((photo, index) => ({
     id: `existing-${index}-${photo.imagePath}`,
     file: null,
+    sourceFile: null,
     name: toExistingPhotoName(photo.imagePath, index),
     imagePath: photo.imagePath,
     thumbPath: photo.thumbPath,
@@ -180,6 +202,35 @@ const loadEditablePost = async () => {
   }
 }
 
+const createWebpUploadFile = async (file: File) => {
+  const bitmap = await createImageBitmap(file)
+  const canvas = document.createElement('canvas')
+  canvas.width = bitmap.width
+  canvas.height = bitmap.height
+
+  const context = canvas.getContext('2d')
+  if (!context) {
+    bitmap.close()
+    throw new Error(t('submit.errors.thumbnailFailed'))
+  }
+
+  context.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height)
+  bitmap.close()
+
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, 'image/webp', getAdaptiveWebpQuality(file.size))
+  })
+
+  if (!blob) {
+    throw new Error(t('submit.errors.thumbnailFailed'))
+  }
+
+  const baseName = file.name.replace(/\.[^.]+$/, '') || 'original'
+  return new File([blob], `${baseName}.webp`, {
+    type: 'image/webp'
+  })
+}
+
 const createThumbnail = async (file: File) => {
   const bitmap = await createImageBitmap(file)
   const longestSide = Math.max(bitmap.width, bitmap.height)
@@ -197,21 +248,19 @@ const createThumbnail = async (file: File) => {
     throw new Error(t('submit.errors.cannotCreateThumbnailCanvas'))
   }
 
-  context.fillStyle = '#fffaf3'
-  context.fillRect(0, 0, width, height)
   context.drawImage(bitmap, 0, 0, width, height)
   bitmap.close()
 
   const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, 'image/jpeg', 0.84)
+    canvas.toBlob(resolve, 'image/webp', Math.max(0.62, getAdaptiveWebpQuality(file.size) - 0.06))
   })
 
   if (!blob) {
     throw new Error(t('submit.errors.thumbnailFailed'))
   }
 
-  return new File([blob], 'thumb.jpg', {
-    type: 'image/jpeg'
+  return new File([blob], 'thumb.webp', {
+    type: 'image/webp'
   })
 }
 
@@ -330,12 +379,13 @@ const extractCoverExifIfEmpty = async () => {
   }
 
   const coverPhoto = selectedPhotos.value[0]
-  if (!coverPhoto?.file) {
+  const exifSource = coverPhoto?.sourceFile || coverPhoto?.file
+  if (!exifSource) {
     return
   }
 
   try {
-    await extractExif(coverPhoto.file)
+    await extractExif(exifSource)
   } catch {
     // EXIF is optional; silent fallback keeps the flow moving.
   }
@@ -369,11 +419,11 @@ const onFileChange = async (event: Event) => {
     errorMessage.value = t('submit.errors.tooManyPhotos', { max: MAX_POST_PHOTOS })
   }
 
-  let thumbnailFailed = false
   for (const [index, file] of acceptedFiles.entries()) {
     const photo: SelectedPhoto = {
       id: crypto.randomUUID(),
       file,
+      sourceFile: file,
       name: file.name,
       imagePath: null,
       thumbPath: null,
@@ -386,21 +436,9 @@ const onFileChange = async (event: Event) => {
 
     selectedPhotos.value.push(photo)
 
-    try {
-      photo.thumbnailFile = await createThumbnail(file)
-      photo.thumbPreviewUrl = URL.createObjectURL(photo.thumbnailFile)
-      photo.revokeThumbPreview = true
-    } catch {
-      thumbnailFailed = true
-    }
-
     if (wasEmpty && index === 0) {
       await extractCoverExifIfEmpty()
     }
-  }
-
-  if (thumbnailFailed && !errorMessage.value) {
-    errorMessage.value = t('submit.errors.thumbnailFailed')
   }
 }
 
@@ -511,7 +549,7 @@ const startUploadProgress = (photos: SelectedPhoto[]) => {
       return count
     }
 
-    return count + 1 + (photo.thumbnailFile ? 1 : 0)
+    return count + 2
   }, 0)
 
   uploadProgressStepCount.value = Math.max(1, uploadSteps + 1)
@@ -547,20 +585,36 @@ const uploadPhoto = async (
     throw new Error(t('submit.errors.selectPhoto'))
   }
 
+  const sourceFile = photo.sourceFile || photo.file
+  let uploadOriginalFile = sourceFile
+
+  try {
+    uploadOriginalFile = await createWebpUploadFile(sourceFile)
+  } catch {
+    // Server-side fallback conversion still guarantees WebP in persisted paths.
+  }
+
+  let thumbnailFile: File | null = null
+  try {
+    thumbnailFile = await createThumbnail(sourceFile)
+  } catch {
+    thumbnailFile = null
+  }
+
   const supabase = useSupabaseBrowserClient()
   const folderName = String(index + 1).padStart(2, '0')
-  const safeExtension = photo.name.split('.').pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, '') || 'jpg'
+  const safeExtension = uploadOriginalFile.name.split('.').pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, '') || 'webp'
   const originalPath = `${userId}/${postFolder}/${folderName}/original.${safeExtension}`
-  const thumbPath = photo.thumbnailFile
-    ? `${userId}/${postFolder}/${folderName}/thumb.jpg`
+  const thumbPath = thumbnailFile
+    ? `${userId}/${postFolder}/${folderName}/thumb.webp`
     : null
 
   const { error: uploadOriginalError } = await supabase
     .storage
     .from(STORAGE_BUCKET)
-    .upload(originalPath, photo.file, {
+    .upload(originalPath, uploadOriginalFile, {
       upsert: false,
-      contentType: photo.file.type || undefined
+      contentType: uploadOriginalFile.type || undefined
     })
 
   if (uploadOriginalError) {
@@ -570,13 +624,13 @@ const uploadPhoto = async (
   uploadedPaths.push(originalPath)
   advanceUploadProgress()
 
-  if (photo.thumbnailFile && thumbPath) {
+  if (thumbnailFile && thumbPath) {
     const { error: uploadThumbError } = await supabase
       .storage
       .from(STORAGE_BUCKET)
-      .upload(thumbPath, photo.thumbnailFile, {
+      .upload(thumbPath, thumbnailFile, {
         upsert: false,
-        contentType: 'image/jpeg'
+        contentType: 'image/webp'
       })
 
     if (uploadThumbError) {
@@ -584,6 +638,9 @@ const uploadPhoto = async (
     }
 
     uploadedPaths.push(thumbPath)
+    advanceUploadProgress()
+  } else {
+    // Keep progress in sync when thumbnail conversion is skipped/failed.
     advanceUploadProgress()
   }
 

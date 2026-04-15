@@ -357,8 +357,32 @@ onBeforeUnmount(() => {
 <template>
   <section class="workbench-panel workbench-panel--detail">
     <template v-if="loading">
-      <div class="empty-state empty-state--inline">
-        <h2>{{ t('post.loadingTitle') }}</h2>
+      <div class="workbench-detail-skeleton" role="status" :aria-label="t('post.loadingTitle')">
+        <div class="workbench-detail-skeleton__hero" aria-hidden="true">
+          <span class="workbench-skeleton-shape workbench-skeleton-shape--hero"></span>
+        </div>
+
+        <div class="workbench-detail-skeleton__body" aria-hidden="true">
+          <div class="workbench-detail-skeleton__titlebar">
+            <span class="workbench-skeleton-shape workbench-skeleton-shape--title"></span>
+            <span class="workbench-skeleton-shape workbench-skeleton-shape--icon"></span>
+          </div>
+
+          <div class="workbench-detail-skeleton__lines">
+            <span class="workbench-skeleton-shape workbench-skeleton-shape--line"></span>
+            <span class="workbench-skeleton-shape workbench-skeleton-shape--line workbench-skeleton-shape--line-short"></span>
+            <span class="workbench-skeleton-shape workbench-skeleton-shape--line"></span>
+            <span class="workbench-skeleton-shape workbench-skeleton-shape--line workbench-skeleton-shape--line-mid"></span>
+          </div>
+
+          <div class="workbench-detail-skeleton__note">
+            <span class="workbench-skeleton-shape workbench-skeleton-shape--label"></span>
+            <span class="workbench-skeleton-shape workbench-skeleton-shape--paragraph"></span>
+            <span class="workbench-skeleton-shape workbench-skeleton-shape--paragraph workbench-skeleton-shape--paragraph-short"></span>
+          </div>
+        </div>
+
+        <span class="sr-only">{{ t('post.loadingTitle') }}</span>
       </div>
     </template>
 
@@ -379,9 +403,14 @@ onBeforeUnmount(() => {
           class="workbench-detail-hero__placeholder"
           aria-live="polite"
         >
+          <span
+            v-if="!heroImageFailed"
+            class="workbench-progress-ring workbench-progress-ring--hero"
+            aria-hidden="true"
+          ></span>
           <i
-            class="fa-solid"
-            :class="heroImageFailed ? 'fa-image' : 'fa-spinner fa-spin'"
+            v-else
+            class="fa-solid fa-image"
             aria-hidden="true"
           />
           <span class="sr-only">{{ heroImageFailed ? t('post.unavailableTitle') : t('post.loadingTitle') }}</span>
@@ -558,9 +587,14 @@ onBeforeUnmount(() => {
           class="workbench-photo-viewer__placeholder"
           aria-live="polite"
         >
+          <span
+            v-if="!viewerImageFailed"
+            class="workbench-progress-ring workbench-progress-ring--viewer"
+            aria-hidden="true"
+          ></span>
           <i
-            class="fa-solid"
-            :class="viewerImageFailed ? 'fa-image' : 'fa-spinner fa-spin'"
+            v-else
+            class="fa-solid fa-image"
             aria-hidden="true"
           />
           <span class="sr-only">{{ viewerImageFailed ? t('post.unavailableTitle') : t('post.loadingTitle') }}</span>

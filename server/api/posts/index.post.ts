@@ -12,6 +12,7 @@ import {
   photoPayloadsToRows,
   postPayloadToRow
 } from '~~/server/utils/posts'
+import { ensureStoragePathsWebp, rewritePhotoPathsWithMap } from '~~/server/utils/imageWebp'
 
 export default defineEventHandler(async (event) => {
   await enforceRateLimit(event, 'submitIp', getRateLimitIdentifier(event))
@@ -31,12 +32,25 @@ export default defineEventHandler(async (event) => {
 
   const supabase = createPublicServerClient(event, accessToken)
   const payload = normalizePostPayload(body, user.id)
+  const conversionResult = await ensureStoragePathsWebp(
+    event,
+    payload.photos.flatMap((photo) => [photo.imagePath, photo.thumbPath]),
+    {
+      upsert: true,
+      continueOnError: false,
+      maxConcurrency: 2
+    }
+  )
+  const webpPayload = {
+    ...payload,
+    photos: rewritePhotoPathsWithMap(payload.photos, conversionResult.pathMap)
+  }
 
   const { data, error } = await supabase
     .from('posts')
     .insert({
       user_id: user.id,
-      ...postPayloadToRow(payload),
+      ...postPayloadToRow(webpPayload),
       status: 'pending',
       review_note: null,
       approved_at: null,
@@ -54,7 +68,7 @@ export default defineEventHandler(async (event) => {
 
   const { error: photosError } = await supabase
     .from('post_photos')
-    .insert(photoPayloadsToRows(payload.photos, 'post_id', data.id))
+    .insert(photoPayloadsToRows(webpPayload.photos, 'post_id', data.id))
 
   if (photosError) {
     await supabase

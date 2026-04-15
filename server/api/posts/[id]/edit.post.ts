@@ -7,6 +7,7 @@ import {
   photoPayloadsToRows,
   postPayloadToRow
 } from '~~/server/utils/posts'
+import { ensureStoragePathsWebp, rewritePhotoPathsWithMap } from '~~/server/utils/imageWebp'
 
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
@@ -25,6 +26,19 @@ export default defineEventHandler(async (event) => {
   await enforceRateLimit(event, 'submitUser', user.id)
 
   const payload = normalizePostPayload(body, user.id)
+  const conversionResult = await ensureStoragePathsWebp(
+    event,
+    payload.photos.flatMap((photo) => [photo.imagePath, photo.thumbPath]),
+    {
+      upsert: true,
+      continueOnError: false,
+      maxConcurrency: 2
+    }
+  )
+  const webpPayload = {
+    ...payload,
+    photos: rewritePhotoPathsWithMap(payload.photos, conversionResult.pathMap)
+  }
   const supabase = createPublicServerClient(event, accessToken)
   const { data: post, error: postError } = await supabase
     .from('posts')
@@ -56,7 +70,7 @@ export default defineEventHandler(async (event) => {
     }
 
     const revisionRow = {
-      ...postPayloadToRow(payload),
+      ...postPayloadToRow(webpPayload),
       review_note: null,
       reviewed_at: null,
       reviewed_by: null
@@ -104,7 +118,7 @@ export default defineEventHandler(async (event) => {
 
     const { error: photosError } = await supabase
       .from('post_revision_photos')
-      .insert(photoPayloadsToRows(payload.photos, 'revision_id', revisionId))
+      .insert(photoPayloadsToRows(webpPayload.photos, 'revision_id', revisionId))
 
     if (photosError) {
       if (!existingRevision) {
@@ -130,7 +144,7 @@ export default defineEventHandler(async (event) => {
   const { data: updatedPost, error: updateError } = await supabase
     .from('posts')
     .update({
-      ...postPayloadToRow(payload),
+      ...postPayloadToRow(webpPayload),
       status: 'pending',
       review_note: null,
       approved_at: null,
@@ -162,7 +176,7 @@ export default defineEventHandler(async (event) => {
 
   const { error: photosError } = await supabase
     .from('post_photos')
-    .insert(photoPayloadsToRows(payload.photos, 'post_id', id))
+    .insert(photoPayloadsToRows(webpPayload.photos, 'post_id', id))
 
   if (photosError) {
     throw createError({
