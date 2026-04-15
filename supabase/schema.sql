@@ -497,11 +497,14 @@ values (
   'fumo',
   'fumo',
   false,
-  10485760,
+  20971520,
   array['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
 )
 on conflict (id) do update
-set public = excluded.public;
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists "fumo_upload_own_folder" on storage.objects;
 create policy "fumo_upload_own_folder"

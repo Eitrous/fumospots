@@ -57,7 +57,7 @@ const placeName = ref('')
 const countryName = ref<string | null>(null)
 const regionName = ref<string | null>(null)
 const cityName = ref<string | null>(null)
-const privacyMode = ref<PrivacyMode>('approx')
+const privacyMode = ref<PrivacyMode>('exact')
 const exactLocation = ref<LatLng | null>(null)
 const publicLocation = ref<LatLng | null>(null)
 const capturedAt = ref('')
@@ -113,7 +113,7 @@ const resetForm = () => {
   countryName.value = null
   regionName.value = null
   cityName.value = null
-  privacyMode.value = 'approx'
+  privacyMode.value = 'exact'
   exactLocation.value = null
   publicLocation.value = null
   capturedAt.value = ''
@@ -165,9 +165,9 @@ const applyEditablePost = (detail: EditablePostDetail) => {
   countryName.value = detail.countryName
   regionName.value = detail.regionName
   cityName.value = detail.cityName
-  privacyMode.value = detail.privacyMode
+  privacyMode.value = 'exact'
   exactLocation.value = detail.exactLocation
-  publicLocation.value = detail.publicLocation
+  publicLocation.value = detail.exactLocation
   capturedAt.value = detail.capturedAt ? toDateTimeLocalValue(new Date(detail.capturedAt)) : ''
   searchQuery.value = ''
   searchResults.value = []
@@ -342,11 +342,9 @@ const selectSearchResult = (result: GeocodeResult) => {
     lng: result.lng
   }
 
-  if (privacyMode.value === 'exact' || !publicLocation.value) {
-    publicLocation.value = {
-      lat: result.lat,
-      lng: result.lng
-    }
+  publicLocation.value = {
+    lat: result.lat,
+    lng: result.lng
   }
 
   applyGeocodeResult(result)
@@ -484,12 +482,6 @@ const movePhoto = (photoId: string, direction: -1 | 1) => {
     void extractCoverExifIfEmpty()
   }
 }
-
-watch(privacyMode, (mode) => {
-  if (mode === 'exact' && exactLocation.value) {
-    publicLocation.value = exactLocation.value
-  }
-})
 
 watch(
   () => [auth.ready.value, auth.user.value?.id, auth.hasUsername.value],
@@ -727,7 +719,7 @@ const submitPost = async () => {
       capturedAt: capturedAt.value ? new Date(capturedAt.value).toISOString() : null,
       exactLocation: exactLocation.value,
       publicLocation: publicLocation.value,
-      privacyMode: privacyMode.value,
+      privacyMode: 'exact',
       placeName: placeName.value.trim(),
       countryName: countryName.value,
       regionName: regionName.value,
@@ -820,6 +812,14 @@ onBeforeUnmount(() => {
       </div>
       <span class="submit-upload-progress__text">{{ uploadProgressPercent }}%</span>
     </div>
+    <a
+      class="submit-guide-link"
+      href="https://blog.0x-3f.com/2026/04/12/fumospots_manual/#%E6%8A%95%E7%A8%BF%E9%A1%BB%E7%9F%A5"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      投稿须知
+    </a>
     <p v-if="loadingEditable" class="status-inline">{{ t('edit.loading') }}</p>
 
     <section class="workbench-stack-section">
@@ -926,30 +926,10 @@ onBeforeUnmount(() => {
           <span>{{ t('submit.capturedAtLabel') }}</span>
           <input v-model="capturedAt" class="field-input" type="datetime-local">
         </label>
-
-        <div class="privacy-toggle">
-          <label class="privacy-pill">
-            <input v-model="privacyMode" type="radio" value="approx">
-            {{ t('submit.privacyApprox') }}
-          </label>
-          <label class="privacy-pill">
-            <input v-model="privacyMode" type="radio" value="exact">
-            {{ t('submit.privacyExact') }}
-          </label>
-        </div>
       </div>
     </section>
 
     <section class="workbench-stack-section">
-      <div class="workbench-stack-section__head">
-        <strong>{{ t('submit.locationSectionTitle') }}</strong>
-        <div class="picker-coords">
-          <div class="picker-coords__group">
-            <code>{{ t('submit.exactLocationLabel', { value: formatLatLng(exactLocation) }) }}</code>
-            <code>{{ t('submit.publicLocationLabel', { value: formatLatLng(publicLocation) }) }}</code>
-          </div>
-        </div>
-      </div>
 
       <div class="field-grid field-grid--two">
         <div class="field-grid">
@@ -1004,6 +984,15 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
+
+      <div class="workbench-stack-section__head">
+        <strong>{{ t('submit.locationSectionTitle') }}</strong>
+        <div class="picker-coords">
+          <div class="picker-coords__group">
+            <code>{{ t('submit.exactLocationLabel', { value: formatLatLng(exactLocation) }) }}</code>
+          </div>
+        </div>
+      </div>
       <LocationPickerMap
         class="workbench-submit-map"
         :exact-location="exactLocation"
@@ -1018,3 +1007,22 @@ onBeforeUnmount(() => {
     <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
   </section>
 </template>
+
+<style scoped>
+.submit-guide-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.6rem;
+  margin-bottom: 0.2rem;
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.submit-guide-link:hover,
+.submit-guide-link:focus-visible {
+  color: var(--accent-deep);
+}
+</style>
