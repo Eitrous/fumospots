@@ -3,7 +3,7 @@ import type { AdminReviewPost } from '~~/shared/fumo'
 
 definePageMeta({
   layout: 'admin',
-  middleware: ['require-auth', 'require-admin']
+  middleware: ['require-admin']
 })
 
 const auth = useAuthState()
