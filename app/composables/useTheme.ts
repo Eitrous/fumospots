@@ -4,10 +4,21 @@ import { computed } from 'vue'
 export type Theme = 'light' | 'dark'
 
 export const useTheme = () => {
-  const cookie = useCookie<Theme>('fumo_theme', {
-    default: () => 'light',
+  const cookie = useCookie<Theme | undefined>('fumo_theme', {
     watch: true
   })
+
+  if (import.meta.client && !cookie.value) {
+    const initialTheme = document.documentElement.getAttribute('data-theme')
+
+    if (initialTheme === 'dark' || initialTheme === 'light') {
+      cookie.value = initialTheme
+    } else {
+      cookie.value = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
+    }
+  }
 
   const isDark = computed(() => cookie.value === 'dark')
 
@@ -17,9 +28,11 @@ export const useTheme = () => {
 
   // Bind the theme to the HTML tag's data-theme attribute for CSS targeting
   useHead(() => ({
-    htmlAttrs: {
-      'data-theme': cookie.value
-    }
+    htmlAttrs: cookie.value
+      ? {
+          'data-theme': cookie.value
+        }
+      : {}
   }))
 
   return {
