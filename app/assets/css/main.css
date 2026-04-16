@@ -33,7 +33,7 @@
 
 html[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0f0d0a;
+  --bg: #0a0c0f;
   --surface: rgba(22, 18, 14, 0.8);
   --surface-strong: rgba(24, 20, 16, 0.95);
   --ink: #e2f5f1;
@@ -95,7 +95,7 @@ body {
 
 body.suggestions-page-body,
 body.home-page-body {
-  background: #060809;
+  background: var(--bg);
 }
 
 a {
