@@ -118,7 +118,7 @@ const submitSuggestion = async () => {
         <h1 class="page-title">{{ t('suggestions.title') }}</h1>
         <p class="lede">{{ t('suggestions.description') }}</p>
       </div>
-
+      <div>一些常见问题及答复请见<a class="submit-guide-link" href="https://blog.0x-3f.com/2026/04/12/fumospots_manual/#FAQ">FAQ</a></div>
       <form class="suggestions-panel__form" @submit.prevent="submitSuggestion">
         <label class="field-label">
           <span>{{ t('suggestions.fieldLabel') }}</span>
@@ -157,3 +157,22 @@ const submitSuggestion = async () => {
     </section>
   </main>
 </template>
+
+<style scoped>
+.submit-guide-link {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  width: fit-content;
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.submit-guide-link:hover,
+.submit-guide-link:focus-visible {
+  color: var(--accent-deep);
+}
+</style>
