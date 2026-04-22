@@ -4,40 +4,25 @@ export default defineEventHandler(async (event) => {
   await requireAdminUser(event)
   const supabase = createAdminServerClient(event)
 
-  const [{ count: postsCount, error: postsError }, { count: revisionsCount, error: revisionsError }] = await Promise.all([
-    supabase
-      .from('posts')
-      .select('id', {
-        count: 'exact',
-        head: true
-      }),
-    supabase
-      .from('post_revisions')
-      .select('id', {
-        count: 'exact',
-        head: true
-      })
-  ])
-
-  if (postsError) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: postsError.message
+  const { count, error } = await supabase
+    .from('posts')
+    .select('id, post_revisions!left(id)', {
+      count: 'exact',
+      head: true
     })
-  }
+    .eq('status', 'approved')
+    .is('post_revisions.id', null)
 
-  if (revisionsError) {
+  if (error) {
     throw createError({
       statusCode: 500,
-      statusMessage: revisionsError.message
+      statusMessage: error.message
     })
   }
 
   return {
     totals: {
-      posts: postsCount ?? 0,
-      revisions: revisionsCount ?? 0,
-      eligibleRows: (postsCount ?? 0) + (revisionsCount ?? 0)
+      eligiblePosts: count ?? 0
     }
   }
 })

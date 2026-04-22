@@ -100,6 +100,29 @@ export type AdminReviewPost = {
   }
 }
 
+export type AdminLocationBackfillItem = {
+  id: number
+  title: string
+  body: string | null
+  imageUrl: string | null
+  thumbUrl: string | null
+  photos: PostPhotoAsset[]
+  placeName: string | null
+  countryName: string | null
+  regionName: string | null
+  cityName: string | null
+  exactLocation: LatLng | null
+  publicLocation: LatLng | null
+  privacyMode: PrivacyMode
+  capturedAt: string | null
+  createdAt: string | null
+  author: {
+    id: string
+    username: string
+    avatarUrl: string | null
+  }
+}
+
 export type UserPostSummary = {
   id: number
   title: string

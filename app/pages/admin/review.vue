@@ -1,11 +1,26 @@
 <script setup lang="ts">
-import type { AdminReviewPost } from '~~/shared/fumo'
+import type { AdminLocationBackfillItem, AdminReviewPost } from '~~/shared/fumo'
 import { normalizeApiErrorMessage } from '~~/app/composables/normalizeApiErrorMessage'
 
 definePageMeta({
   layout: 'admin',
   middleware: ['require-admin']
 })
+
+type LocationBackfillStatsResponse = {
+  totals: {
+    eligiblePosts: number
+  }
+}
+
+type LocationBackfillItemsResponse = {
+  items: AdminLocationBackfillItem[]
+  nextCursor: number | null
+  hasMore: boolean
+}
+
+const LOCATION_BACKFILL_PAGE_SIZE = 50
+const LOCATION_BACKFILL_TOP_UP_THRESHOLD = 10
 
 const auth = useAuthState()
 const { formatDateTime, formatLatLng, privacyModeLabel } = useFormatters({ locale: 'zh-CN' })
@@ -22,142 +37,21 @@ const submitting = ref(false)
 const feedbackMessage = ref('')
 const errorMessage = ref('')
 
-type MigrationStatsResponse = {
-  totals: {
-    pendingRows: number
-    pendingPaths: number
-  }
-}
-
-type MigrationCursor = {
-  postsAfterId: number
-  revisionsAfterId: number
-}
-
-type MigrationConvertResponse = {
-  wouldUpdate: {
-    postCovers: number
-    postPhotos: number
-    revisionCovers: number
-    revisionPhotos: number
-  }
-  updated: {
-    postCovers: number
-    postPhotos: number
-    revisionCovers: number
-    revisionPhotos: number
-  }
-  conversions: {
-    convertedPaths: number
-    skippedPaths: number
-    failedPaths: number
-    failures: Array<{
-      sourcePath: string
-      message: string
-    }>
-  }
-  updates: {
-    failedRows: number
-    failures: Array<{
-      scope: string
-      key: string
-      message: string
-    }>
-  }
-  cursor: MigrationCursor
-  hasMore: boolean
-}
-
-type MigrationFailurePreview = {
-  scope: string
-  key: string
-  message: string
-}
-
-type MigrationRunSummary = {
-  batchCount: number
-  convertedPaths: number
-  skippedPaths: number
-  updatedRows: number
-  failedPaths: number
-  failedRows: number
-}
-
-type LocationBackfillStatsResponse = {
-  totals: {
-    posts: number
-    revisions: number
-    eligibleRows: number
-  }
-}
-
-type LocationBackfillRunResponse = {
-  dryRun: boolean
-  batchSize: number
-  processed: {
-    posts: number
-    revisions: number
-  }
-  wouldUpdate: {
-    posts: number
-    revisions: number
-  }
-  updated: {
-    posts: number
-    revisions: number
-  }
-  failures: {
-    geocode: number
-    updates: number
-    items: Array<{
-      stage: 'geocode' | 'update'
-      scope: 'posts' | 'post_revisions'
-      key: string
-      message: string
-    }>
-  }
-  cursor: MigrationCursor
-  hasMore: boolean
-}
-
-type LocationBackfillFailurePreview = {
-  stage: 'geocode' | 'update'
-  scope: 'posts' | 'post_revisions'
-  key: string
-  message: string
-}
-
-type LocationBackfillRunSummary = {
-  batchCount: number
-  processedRows: number
-  wouldUpdateRows: number
-  updatedRows: number
-  failedGeocode: number
-  failedUpdates: number
-}
-
-const MIGRATION_BATCH_SIZE = 30
-const MIGRATION_FAILURE_PREVIEW_LIMIT = 8
-const LOCATION_BACKFILL_BATCH_SIZE = 30
-
-const migrationStats = ref<MigrationStatsResponse | null>(null)
-const migrationStatsLoading = ref(false)
-const migrationPreparing = ref(false)
-const migrationRunning = ref(false)
-const migrationProgressMessage = ref('')
-const migrationFeedbackMessage = ref('')
-const migrationErrorMessage = ref('')
-const migrationFailurePreview = ref<MigrationFailurePreview[]>([])
-const migrationSummary = ref<MigrationRunSummary | null>(null)
 const locationBackfillStats = ref<LocationBackfillStatsResponse | null>(null)
 const locationBackfillStatsLoading = ref(false)
-const locationBackfillPreparing = ref(false)
-const locationBackfillRunning = ref(false)
-const locationBackfillProgressMessage = ref('')
-const locationBackfillFeedbackMessage = ref('')
+const locationBackfillItems = ref<AdminLocationBackfillItem[]>([])
+const locationBackfillLoading = ref(false)
+const locationBackfillLoadingMore = ref(false)
+const locationBackfillSaving = ref(false)
 const locationBackfillErrorMessage = ref('')
-const locationBackfillFailurePreview = ref<LocationBackfillFailurePreview[]>([])
-const locationBackfillSummary = ref<LocationBackfillRunSummary | null>(null)
+const locationBackfillFeedbackMessage = ref('')
+const locationBackfillNextCursor = ref<number | null>(null)
+const locationBackfillHasMore = ref(false)
+const selectedBackfillId = ref<number | null>(null)
+const selectedBackfillPhotoIndex = ref(0)
+const backfillCountryName = ref('')
+const backfillRegionName = ref('')
+const backfillCityName = ref('')
 
 const getAuthHeadersOrThrow = () => {
   const headers = auth.authHeaders.value
@@ -168,416 +62,20 @@ const getAuthHeadersOrThrow = () => {
   return headers
 }
 
-const sumMigrationRows = (rows: {
-  postCovers: number
-  postPhotos: number
-  revisionCovers: number
-  revisionPhotos: number
-}) => {
-  return rows.postCovers + rows.postPhotos + rows.revisionCovers + rows.revisionPhotos
-}
-
-const sumLocationBackfillRows = (rows: {
-  posts: number
-  revisions: number
-}) => {
-  return rows.posts + rows.revisions
-}
-
-const shouldRetryMigrationRequest = (error: unknown) => {
-  if (!error || typeof error !== 'object') {
-    return false
-  }
-
-  const statusCode = Number((error as { statusCode?: unknown }).statusCode)
-  if (Number.isFinite(statusCode) && statusCode > 0) {
-    return statusCode >= 500
-  }
-
-  return true
-}
-
-const wait = (ms: number) => {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
-
-const requestMigrationConvert = async (
-  body: {
-    dryRun: boolean
-    batchSize: number
-    cursor?: MigrationCursor
-  },
-  maxAttempts = 3
+const formatScopeLabel = (
+  countryName: string | null | undefined,
+  regionName: string | null | undefined,
+  cityName: string | null | undefined
 ) => {
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      return await $fetch<MigrationConvertResponse>('/api/admin/image-migration/convert', {
-        method: 'POST',
-        headers: getAuthHeadersOrThrow(),
-        body
-      })
-    } catch (error) {
-      const shouldRetry = shouldRetryMigrationRequest(error)
-      if (!shouldRetry || attempt >= maxAttempts - 1) {
-        throw error
-      }
+  const parts = [countryName, regionName, cityName]
+    .map(part => part?.trim())
+    .filter((part): part is string => Boolean(part))
 
-      await wait(500 * (2 ** attempt))
-    }
-  }
-
-  throw new Error('图片迁移请求失败。')
-}
-
-const requestLocationBackfillRun = async (
-  body: {
-    dryRun: boolean
-    batchSize: number
-    cursor?: MigrationCursor
-  },
-  maxAttempts = 3
-) => {
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    try {
-      return await $fetch<LocationBackfillRunResponse>('/api/admin/location-backfill/run', {
-        method: 'POST',
-        headers: getAuthHeadersOrThrow(),
-        body
-      })
-    } catch (error) {
-      const shouldRetry = shouldRetryMigrationRequest(error)
-      if (!shouldRetry || attempt >= maxAttempts - 1) {
-        throw error
-      }
-
-      await wait(500 * (2 ** attempt))
-    }
-  }
-
-  throw new Error('Location backfill request failed.')
-}
-
-const collectFailurePreview = (result: MigrationConvertResponse) => {
-  if (migrationFailurePreview.value.length >= MIGRATION_FAILURE_PREVIEW_LIMIT) {
-    return
-  }
-
-  for (const failure of result.conversions.failures) {
-    if (migrationFailurePreview.value.length >= MIGRATION_FAILURE_PREVIEW_LIMIT) {
-      break
-    }
-
-    migrationFailurePreview.value.push({
-      scope: 'storage',
-      key: failure.sourcePath,
-      message: failure.message
-    })
-  }
-
-  for (const failure of result.updates.failures) {
-    if (migrationFailurePreview.value.length >= MIGRATION_FAILURE_PREVIEW_LIMIT) {
-      break
-    }
-
-    migrationFailurePreview.value.push({
-      scope: failure.scope,
-      key: failure.key,
-      message: failure.message
-    })
-  }
-}
-
-const collectLocationBackfillFailurePreview = (result: LocationBackfillRunResponse) => {
-  if (locationBackfillFailurePreview.value.length >= MIGRATION_FAILURE_PREVIEW_LIMIT) {
-    return
-  }
-
-  for (const failure of result.failures.items) {
-    if (locationBackfillFailurePreview.value.length >= MIGRATION_FAILURE_PREVIEW_LIMIT) {
-      break
-    }
-
-    locationBackfillFailurePreview.value.push({
-      stage: failure.stage,
-      scope: failure.scope,
-      key: failure.key,
-      message: failure.message
-    })
-  }
-}
-
-const loadMigrationStats = async (options: { preserveErrorMessage?: boolean } = {}) => {
-  if (!auth.authHeaders.value.Authorization) {
-    return
-  }
-
-  migrationStatsLoading.value = true
-
-  try {
-    migrationStats.value = await $fetch<MigrationStatsResponse>('/api/admin/image-migration/stats', {
-      headers: getAuthHeadersOrThrow()
-    })
-    if (!options.preserveErrorMessage) {
-      migrationErrorMessage.value = ''
-    }
-  } catch (error) {
-    migrationErrorMessage.value = normalizeApiErrorMessage(error, '迁移统计加载失败。')
-  } finally {
-    migrationStatsLoading.value = false
-  }
-}
-
-const loadLocationBackfillStats = async (options: { preserveErrorMessage?: boolean } = {}) => {
-  if (!auth.authHeaders.value.Authorization) {
-    return
-  }
-
-  locationBackfillStatsLoading.value = true
-
-  try {
-    locationBackfillStats.value = await $fetch<LocationBackfillStatsResponse>('/api/admin/location-backfill/stats', {
-      headers: getAuthHeadersOrThrow()
-    })
-    if (!options.preserveErrorMessage) {
-      locationBackfillErrorMessage.value = ''
-    }
-  } catch (error) {
-    locationBackfillErrorMessage.value = normalizeApiErrorMessage(error, '地区字段回填统计加载失败。')
-  } finally {
-    locationBackfillStatsLoading.value = false
-  }
-}
-
-const runImageMigration = async () => {
-  if (migrationRunning.value || migrationPreparing.value) {
-    return
-  }
-
-  if (import.meta.server) {
-    return
-  }
-
-  migrationFeedbackMessage.value = ''
-  migrationErrorMessage.value = ''
-  migrationProgressMessage.value = ''
-  migrationFailurePreview.value = []
-
-  if (!migrationStats.value) {
-    await loadMigrationStats()
-  }
-
-  const pendingPaths = migrationStats.value?.totals.pendingPaths ?? 0
-  if (pendingPaths <= 0) {
-    migrationFeedbackMessage.value = '当前没有待迁移的历史图片。'
-    return
-  }
-
-  migrationPreparing.value = true
-  let dryRunResult: MigrationConvertResponse
-
-  try {
-    dryRunResult = await requestMigrationConvert({
-      dryRun: true,
-      batchSize: MIGRATION_BATCH_SIZE
-    })
-  } catch (error) {
-    migrationPreparing.value = false
-    migrationErrorMessage.value = normalizeApiErrorMessage(error, '迁移预检查失败。')
-    return
-  }
-
-  const wouldUpdateRows = sumMigrationRows(dryRunResult.wouldUpdate)
-  const dryRunFailureCount = dryRunResult.conversions.failedPaths + dryRunResult.updates.failedRows
-  const shouldContinue = window.confirm(
-    `预检查完成：预计更新 ${wouldUpdateRows} 条记录，失败 ${dryRunFailureCount} 条。确认开始正式迁移吗？`
-  )
-
-  migrationPreparing.value = false
-
-  if (!shouldContinue) {
-    migrationFeedbackMessage.value = '已取消迁移执行。'
-    return
-  }
-
-  const summary: MigrationRunSummary = {
-    batchCount: 0,
-    convertedPaths: 0,
-    skippedPaths: 0,
-    updatedRows: 0,
-    failedPaths: 0,
-    failedRows: 0
-  }
-
-  migrationRunning.value = true
-
-  try {
-    let nextCursor: MigrationCursor | undefined
-
-    while (true) {
-      summary.batchCount += 1
-      migrationProgressMessage.value = `正在迁移第 ${summary.batchCount} 批...`
-
-      const result = await requestMigrationConvert({
-        dryRun: false,
-        batchSize: MIGRATION_BATCH_SIZE,
-        cursor: nextCursor
-      })
-
-      summary.convertedPaths += result.conversions.convertedPaths
-      summary.skippedPaths += result.conversions.skippedPaths
-      summary.failedPaths += result.conversions.failedPaths
-      summary.updatedRows += sumMigrationRows(result.updated)
-      summary.failedRows += result.updates.failedRows
-
-      collectFailurePreview(result)
-      nextCursor = result.cursor
-
-      if (!result.hasMore) {
-        break
-      }
-    }
-
-    migrationSummary.value = summary
-    migrationFeedbackMessage.value = `迁移完成：共 ${summary.batchCount} 批，更新 ${summary.updatedRows} 条记录，转换 ${summary.convertedPaths} 条图片路径。`
-    if (summary.failedPaths > 0 || summary.failedRows > 0) {
-      migrationErrorMessage.value = `迁移已完成，但有失败项：转换失败 ${summary.failedPaths} 条，更新失败 ${summary.failedRows} 条。`
-    }
-  } catch (error) {
-    migrationSummary.value = summary
-    migrationErrorMessage.value = `${normalizeApiErrorMessage(error, '迁移执行失败。')}（已执行 ${summary.batchCount} 批）`
-  } finally {
-    migrationRunning.value = false
-    migrationProgressMessage.value = ''
-    await loadMigrationStats({ preserveErrorMessage: Boolean(migrationErrorMessage.value) })
-  }
-}
-
-const runLocationBackfill = async () => {
-  if (locationBackfillRunning.value || locationBackfillPreparing.value) {
-    return
-  }
-
-  if (import.meta.server) {
-    return
-  }
-
-  locationBackfillFeedbackMessage.value = ''
-  locationBackfillErrorMessage.value = ''
-  locationBackfillProgressMessage.value = ''
-  locationBackfillFailurePreview.value = []
-  locationBackfillSummary.value = null
-
-  if (!locationBackfillStats.value) {
-    await loadLocationBackfillStats()
-  }
-
-  const eligibleRows = locationBackfillStats.value?.totals.eligibleRows ?? 0
-  if (eligibleRows <= 0) {
-    locationBackfillFeedbackMessage.value = '当前没有可检查的历史地区记录。'
-    return
-  }
-
-  locationBackfillPreparing.value = true
-  let dryRunResult: LocationBackfillRunResponse
-
-  try {
-    dryRunResult = await requestLocationBackfillRun({
-      dryRun: true,
-      batchSize: LOCATION_BACKFILL_BATCH_SIZE
-    })
-  } catch (error) {
-    locationBackfillPreparing.value = false
-    locationBackfillErrorMessage.value = normalizeApiErrorMessage(error, '地区字段回填预检查失败。')
-    return
-  }
-
-  collectLocationBackfillFailurePreview(dryRunResult)
-
-  const processedRows = sumLocationBackfillRows(dryRunResult.processed)
-  const wouldUpdateRows = sumLocationBackfillRows(dryRunResult.wouldUpdate)
-  const dryRunFailureCount = dryRunResult.failures.geocode + dryRunResult.failures.updates
-
-  if (wouldUpdateRows <= 0) {
-    locationBackfillPreparing.value = false
-
-    if (dryRunFailureCount > 0) {
-      locationBackfillErrorMessage.value = `预检查完成，但有 ${dryRunFailureCount} 条记录处理失败。`
-      return
-    }
-
-    locationBackfillFeedbackMessage.value = '预检查完成，当前没有需要更新的地区字段。'
-    return
-  }
-
-  const shouldContinue = window.confirm(
-    `预检查完成：扫描 ${processedRows} 条记录，预计更新 ${wouldUpdateRows} 条，失败 ${dryRunFailureCount} 条。确认开始正式回填吗？`
-  )
-
-  locationBackfillPreparing.value = false
-
-  if (!shouldContinue) {
-    locationBackfillFeedbackMessage.value = '已取消地区字段回填。'
-    return
-  }
-
-  const summary: LocationBackfillRunSummary = {
-    batchCount: 0,
-    processedRows: 0,
-    wouldUpdateRows: 0,
-    updatedRows: 0,
-    failedGeocode: 0,
-    failedUpdates: 0
-  }
-
-  locationBackfillRunning.value = true
-
-  try {
-    let nextCursor: MigrationCursor | undefined
-
-    while (true) {
-      summary.batchCount += 1
-      locationBackfillProgressMessage.value = `正在回填第 ${summary.batchCount} 批...`
-
-      const result = await requestLocationBackfillRun({
-        dryRun: false,
-        batchSize: LOCATION_BACKFILL_BATCH_SIZE,
-        cursor: nextCursor
-      })
-
-      summary.processedRows += sumLocationBackfillRows(result.processed)
-      summary.wouldUpdateRows += sumLocationBackfillRows(result.wouldUpdate)
-      summary.updatedRows += sumLocationBackfillRows(result.updated)
-      summary.failedGeocode += result.failures.geocode
-      summary.failedUpdates += result.failures.updates
-
-      collectLocationBackfillFailurePreview(result)
-      nextCursor = result.cursor
-
-      if (!result.hasMore) {
-        break
-      }
-    }
-
-    locationBackfillSummary.value = summary
-    invalidateRegionPages()
-    locationBackfillFeedbackMessage.value = `地区字段回填完成：共 ${summary.batchCount} 批，更新 ${summary.updatedRows} 条记录。`
-    if (summary.failedGeocode > 0 || summary.failedUpdates > 0) {
-      locationBackfillErrorMessage.value = `回填已完成，但有失败项：解析失败 ${summary.failedGeocode} 条，更新失败 ${summary.failedUpdates} 条。`
-    }
-  } catch (error) {
-    locationBackfillSummary.value = summary
-    locationBackfillErrorMessage.value = `${normalizeApiErrorMessage(error, '地区字段回填执行失败。')}（已执行 ${summary.batchCount} 批）`
-  } finally {
-    locationBackfillRunning.value = false
-    locationBackfillProgressMessage.value = ''
-    await loadLocationBackfillStats({ preserveErrorMessage: Boolean(locationBackfillErrorMessage.value) })
-  }
+  return parts.length ? parts.join(' / ') : '未填写地区字段'
 }
 
 const selectedPost = computed(() => {
-  return posts.value.find((post) => post.reviewKey === selectedKey.value) || null
+  return posts.value.find(post => post.reviewKey === selectedKey.value) || null
 })
 
 const selectedReviewPhotos = computed(() => {
@@ -605,13 +103,55 @@ const selectedReviewTypeLabel = computed(() => {
   return selectedPost.value?.reviewKind === 'revision' ? '修改审核' : '新投稿'
 })
 
+const selectedBackfillItem = computed(() => {
+  return locationBackfillItems.value.find(item => item.id === selectedBackfillId.value) || null
+})
+
+const selectedBackfillPhotos = computed(() => {
+  if (!selectedBackfillItem.value) {
+    return []
+  }
+
+  if (selectedBackfillItem.value.photos.length) {
+    return selectedBackfillItem.value.photos
+  }
+
+  return selectedBackfillItem.value.imageUrl
+    ? [{
+        imageUrl: selectedBackfillItem.value.imageUrl,
+        thumbUrl: selectedBackfillItem.value.thumbUrl
+      }]
+    : []
+})
+
+const selectedBackfillPhoto = computed(() => {
+  return selectedBackfillPhotos.value[selectedBackfillPhotoIndex.value] || selectedBackfillPhotos.value[0] || null
+})
+
+const backfillSaveDisabled = computed(() => {
+  return locationBackfillSaving.value
+    || !selectedBackfillItem.value
+    || !backfillRegionName.value.trim()
+})
+
 watch(selectedPost, (post) => {
   reviewNote.value = post?.reviewNote || ''
   selectedPhotoIndex.value = 0
 }, { immediate: true })
 
+watch(selectedBackfillItem, (item) => {
+  selectedBackfillPhotoIndex.value = 0
+  backfillCountryName.value = item?.countryName || ''
+  backfillRegionName.value = item?.regionName || ''
+  backfillCityName.value = item?.cityName || ''
+}, { immediate: true })
+
 const selectPhoto = (index: number) => {
   selectedPhotoIndex.value = index
+}
+
+const selectBackfillPhoto = (index: number) => {
+  selectedBackfillPhotoIndex.value = index
 }
 
 const loadPosts = async () => {
@@ -636,17 +176,161 @@ const loadPosts = async () => {
   }
 }
 
-watch(
-  () => [auth.ready.value, auth.isAdmin.value],
-  ([ready, isAdmin]) => {
-    if (ready && isAdmin) {
-      void loadPosts()
-      void loadMigrationStats()
-      void loadLocationBackfillStats()
+const loadLocationBackfillStats = async (options: { preserveErrorMessage?: boolean } = {}) => {
+  if (!auth.authHeaders.value.Authorization) {
+    return
+  }
+
+  locationBackfillStatsLoading.value = true
+
+  try {
+    locationBackfillStats.value = await $fetch<LocationBackfillStatsResponse>('/api/admin/location-backfill/stats', {
+      headers: getAuthHeadersOrThrow()
+    })
+
+    if (!options.preserveErrorMessage) {
+      locationBackfillErrorMessage.value = ''
     }
-  },
-  { immediate: true }
-)
+  } catch (error) {
+    locationBackfillErrorMessage.value = normalizeApiErrorMessage(error, '地区字段队列统计加载失败。')
+  } finally {
+    locationBackfillStatsLoading.value = false
+  }
+}
+
+const loadLocationBackfillItems = async (options: {
+  append?: boolean
+  preserveErrorMessage?: boolean
+} = {}) => {
+  if (!auth.authHeaders.value.Authorization) {
+    return
+  }
+
+  const append = options.append === true
+
+  if (append) {
+    if (locationBackfillLoadingMore.value || !locationBackfillHasMore.value) {
+      return
+    }
+
+    locationBackfillLoadingMore.value = true
+  } else {
+    if (locationBackfillLoading.value) {
+      return
+    }
+
+    locationBackfillLoading.value = true
+  }
+
+  try {
+    const response = await $fetch<LocationBackfillItemsResponse>('/api/admin/location-backfill/items', {
+      headers: getAuthHeadersOrThrow(),
+      query: {
+        limit: LOCATION_BACKFILL_PAGE_SIZE,
+        afterId: append ? locationBackfillNextCursor.value ?? undefined : undefined
+      }
+    })
+
+    const mergedItems = append
+      ? [...locationBackfillItems.value, ...response.items.filter(item => !locationBackfillItems.value.some(existing => existing.id === item.id))]
+      : response.items
+
+    locationBackfillItems.value = mergedItems
+    locationBackfillNextCursor.value = response.nextCursor
+    locationBackfillHasMore.value = response.hasMore
+
+    if (!selectedBackfillId.value || !mergedItems.some(item => item.id === selectedBackfillId.value)) {
+      selectedBackfillId.value = mergedItems[0]?.id ?? null
+    }
+
+    if (!options.preserveErrorMessage) {
+      locationBackfillErrorMessage.value = ''
+    }
+  } catch (error) {
+    locationBackfillErrorMessage.value = normalizeApiErrorMessage(error, '地区字段队列加载失败。')
+  } finally {
+    if (append) {
+      locationBackfillLoadingMore.value = false
+    } else {
+      locationBackfillLoading.value = false
+    }
+  }
+}
+
+const refreshLocationBackfillQueue = async () => {
+  locationBackfillFeedbackMessage.value = ''
+  await Promise.all([
+    loadLocationBackfillStats(),
+    loadLocationBackfillItems()
+  ])
+}
+
+const removeLocationBackfillItem = (id: number) => {
+  const index = locationBackfillItems.value.findIndex(item => item.id === id)
+  if (index < 0) {
+    return
+  }
+
+  const nextItems = locationBackfillItems.value.filter(item => item.id !== id)
+  const nextSelectedId = nextItems[index]?.id ?? nextItems[index - 1]?.id ?? null
+
+  locationBackfillItems.value = nextItems
+  if (selectedBackfillId.value === id) {
+    selectedBackfillId.value = nextSelectedId
+  }
+}
+
+const maybeTopUpLocationBackfillItems = async () => {
+  if (locationBackfillItems.value.length >= LOCATION_BACKFILL_TOP_UP_THRESHOLD || !locationBackfillHasMore.value) {
+    return
+  }
+
+  await loadLocationBackfillItems({ append: true, preserveErrorMessage: true })
+}
+
+const saveLocationBackfill = async () => {
+  if (!selectedBackfillItem.value || backfillSaveDisabled.value) {
+    return
+  }
+
+  locationBackfillSaving.value = true
+  locationBackfillFeedbackMessage.value = ''
+  locationBackfillErrorMessage.value = ''
+
+  const item = selectedBackfillItem.value
+
+  try {
+    await $fetch(`/api/admin/location-backfill/${item.id}`, {
+      method: 'POST',
+      headers: getAuthHeadersOrThrow(),
+      body: {
+        countryName: backfillCountryName.value,
+        regionName: backfillRegionName.value,
+        cityName: backfillCityName.value
+      }
+    })
+
+    invalidatePostDetail(item.id)
+    invalidateUserPage(item.author.username)
+    invalidateRegionPages()
+    removeLocationBackfillItem(item.id)
+
+    if (locationBackfillStats.value) {
+      locationBackfillStats.value = {
+        totals: {
+          eligiblePosts: Math.max(0, locationBackfillStats.value.totals.eligiblePosts - 1)
+        }
+      }
+    }
+
+    locationBackfillFeedbackMessage.value = '地区字段已保存。'
+    await maybeTopUpLocationBackfillItems()
+  } catch (error) {
+    locationBackfillErrorMessage.value = normalizeApiErrorMessage(error, '地区字段保存失败。')
+  } finally {
+    locationBackfillSaving.value = false
+  }
+}
 
 const submitReview = async (action: 'approve' | 'reject') => {
   if (!selectedPost.value) {
@@ -674,7 +358,7 @@ const submitReview = async (action: 'approve' | 'reject') => {
     invalidatePostDetail(affectedPostId)
     invalidateUserPage(affectedUsername)
     invalidateRegionPages()
-    posts.value = posts.value.filter((post) => post.reviewKey !== handledKey)
+    posts.value = posts.value.filter(post => post.reviewKey !== handledKey)
     selectedKey.value = posts.value[0]?.reviewKey ?? null
     feedbackMessage.value = action === 'approve'
       ? '已通过，公开内容会按当前审核项更新。'
@@ -686,6 +370,18 @@ const submitReview = async (action: 'approve' | 'reject') => {
     submitting.value = false
   }
 }
+
+watch(
+  () => [auth.ready.value, auth.isAdmin.value],
+  ([ready, isAdmin]) => {
+    if (ready && isAdmin) {
+      void loadPosts()
+      void loadLocationBackfillStats()
+      void loadLocationBackfillItems()
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -700,164 +396,200 @@ const submitReview = async (action: 'approve' | 'reject') => {
       <div class="admin-migration-tool__head">
         <div class="admin-migration-tool__copy">
           <span class="eyebrow">Maintenance</span>
-          <h2 class="admin-migration-tool__title">历史图片 WebP 迁移（临时）</h2>
-          <p class="support-copy">先预检查再执行，执行后会自动分批迁移到完成。</p>
+          <h2 class="admin-migration-tool__title">手动地区回填</h2>
+          <p class="support-copy">这里只显示已发布且从未产生过修改记录的原稿，管理员逐条补全地区字段。</p>
         </div>
 
         <div class="inline-actions">
           <button
             class="workbench-icon-button"
             type="button"
-            :disabled="migrationStatsLoading || migrationPreparing || migrationRunning"
-            title="刷新迁移统计"
-            aria-label="刷新迁移统计"
-            @click="loadMigrationStats"
+            :disabled="locationBackfillStatsLoading || locationBackfillLoading || locationBackfillSaving"
+            title="刷新地区回填队列"
+            aria-label="刷新地区回填队列"
+            @click="refreshLocationBackfillQueue"
           >
             <i
               class="button-icon fa-solid"
-              :class="migrationStatsLoading ? 'fa-spinner fa-spin' : 'fa-rotate-right'"
+              :class="locationBackfillStatsLoading || locationBackfillLoading ? 'fa-spinner fa-spin' : 'fa-rotate-right'"
               aria-hidden="true"
             />
-            <span class="sr-only">刷新迁移统计</span>
+            <span class="sr-only">刷新地区回填队列</span>
           </button>
 
           <button
             class="workbench-icon-button workbench-icon-button--primary"
             type="button"
-            :disabled="migrationPreparing || migrationRunning || migrationStatsLoading"
-            title="开始迁移历史图片"
-            aria-label="开始迁移历史图片"
-            @click="runImageMigration"
+            :disabled="backfillSaveDisabled"
+            title="保存地区字段"
+            aria-label="保存地区字段"
+            @click="saveLocationBackfill"
           >
             <i
               class="button-icon fa-solid"
-              :class="migrationPreparing || migrationRunning ? 'fa-spinner fa-spin' : 'fa-file-image'"
+              :class="locationBackfillSaving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"
               aria-hidden="true"
             />
-            <span class="sr-only">开始迁移历史图片</span>
+            <span class="sr-only">保存地区字段</span>
           </button>
         </div>
       </div>
 
       <div class="admin-migration-tool__stats" aria-live="polite">
         <p>
-          <span>待迁移路径</span>
-          <strong>{{ migrationStatsLoading ? '...' : (migrationStats?.totals.pendingPaths ?? '-') }}</strong>
+          <span>剩余候选</span>
+          <strong>{{ locationBackfillStatsLoading ? '...' : (locationBackfillStats?.totals.eligiblePosts ?? '-') }}</strong>
         </p>
         <p>
-          <span>待迁移记录</span>
-          <strong>{{ migrationStatsLoading ? '...' : (migrationStats?.totals.pendingRows ?? '-') }}</strong>
+          <span>当前已载入</span>
+          <strong>{{ locationBackfillLoading ? '...' : locationBackfillItems.length }}</strong>
         </p>
         <p>
-          <span>上次执行</span>
-          <strong>{{ migrationSummary ? `${migrationSummary.batchCount} 批` : '未执行' }}</strong>
+          <span>后续批次</span>
+          <strong>{{ locationBackfillHasMore ? '可继续加载' : '已到底' }}</strong>
         </p>
       </div>
 
-      <p v-if="migrationProgressMessage" class="status-inline">{{ migrationProgressMessage }}</p>
-      <p v-if="migrationSummary" class="admin-migration-tool__summary">
-        最近执行：转换 {{ migrationSummary.convertedPaths }}，跳过 {{ migrationSummary.skippedPaths }}，
-        更新 {{ migrationSummary.updatedRows }}，失败 {{ migrationSummary.failedPaths + migrationSummary.failedRows }}。
-      </p>
+      <section class="review-layout review-layout--backfill">
+        <aside class="panel panel--page review-list backfill-list">
+          <template v-if="locationBackfillLoading">
+            <span class="status-inline">正在加载地区回填队列...</span>
+          </template>
 
-      <details v-if="migrationFailurePreview.length" class="admin-migration-tool__failures">
-        <summary>查看失败明细（展示前 {{ migrationFailurePreview.length }} 条）</summary>
-        <ul>
-          <li v-for="(failure, index) in migrationFailurePreview" :key="`${failure.scope}-${failure.key}-${index}`">
-            <strong>{{ failure.scope }}</strong>
-            <span>{{ failure.key }}</span>
-            <p>{{ failure.message }}</p>
-          </li>
-        </ul>
-      </details>
+          <template v-else-if="locationBackfillItems.length">
+            <button
+              v-for="item in locationBackfillItems"
+              :key="item.id"
+              :class="{ 'is-active': selectedBackfillId === item.id }"
+              type="button"
+              @click="selectedBackfillId = item.id"
+            >
+              <strong>{{ item.title }}</strong>
+              <p>@{{ item.author.username }}</p>
+              <p>{{ item.placeName || '未填写地点名称' }}</p>
+              <p>{{ formatScopeLabel(item.countryName, item.regionName, item.cityName) }}</p>
+              <p>{{ formatDateTime(item.createdAt) }}</p>
+            </button>
+          </template>
 
-      <p v-if="migrationFeedbackMessage" class="success-banner">{{ migrationFeedbackMessage }}</p>
-      <p v-if="migrationErrorMessage" class="error-banner">{{ migrationErrorMessage }}</p>
-    </section>
+          <div v-else class="empty-state">
+            <h2>当前没有待回填条目</h2>
+            <p>已发布且未修改的原稿处理完之后，这里会保持为空。</p>
+          </div>
+        </aside>
 
-    <section class="panel panel--page admin-migration-tool">
-      <div class="admin-migration-tool__head">
-        <div class="admin-migration-tool__copy">
-          <span class="eyebrow">Maintenance</span>
-          <h2 class="admin-migration-tool__title">地区字段回填（临时）</h2>
-          <p class="support-copy">先全量预检查，再按批次回填 posts 与 post_revisions 的 country / region / city。</p>
-        </div>
+        <section class="panel panel--page review-detail backfill-detail">
+          <template v-if="selectedBackfillItem">
+            <div v-if="selectedBackfillPhoto?.imageUrl" class="review-detail__hero">
+              <img :src="selectedBackfillPhoto.imageUrl" :alt="selectedBackfillItem.title">
+            </div>
 
-        <div class="inline-actions">
-          <button
-            class="workbench-icon-button"
-            type="button"
-            :disabled="locationBackfillStatsLoading || locationBackfillPreparing || locationBackfillRunning"
-            title="刷新地区字段回填统计"
-            aria-label="刷新地区字段回填统计"
-            @click="loadLocationBackfillStats"
-          >
-            <i
-              class="button-icon fa-solid"
-              :class="locationBackfillStatsLoading ? 'fa-spinner fa-spin' : 'fa-rotate-right'"
-              aria-hidden="true"
-            />
-            <span class="sr-only">刷新地区字段回填统计</span>
-          </button>
+            <div
+              v-if="selectedBackfillPhotos.length > 1"
+              class="photo-strip photo-strip--review"
+              aria-label="Backfill photos"
+            >
+              <button
+                v-for="(photo, index) in selectedBackfillPhotos"
+                :key="`${selectedBackfillItem.id}-${index}`"
+                class="photo-strip__button"
+                :class="{ 'is-active': selectedBackfillPhotoIndex === index }"
+                type="button"
+                :aria-label="`查看第 ${index + 1} 张照片`"
+                @click="selectBackfillPhoto(index)"
+              >
+                <img
+                  v-if="photo.thumbUrl || photo.imageUrl"
+                  :src="photo.thumbUrl || photo.imageUrl || ''"
+                  :alt="selectedBackfillItem.title"
+                >
+                <i v-else class="fa-solid fa-image" aria-hidden="true" />
+              </button>
+            </div>
 
-          <button
-            class="workbench-icon-button workbench-icon-button--primary"
-            type="button"
-            :disabled="locationBackfillPreparing || locationBackfillRunning || locationBackfillStatsLoading"
-            title="开始地区字段回填"
-            aria-label="开始地区字段回填"
-            @click="runLocationBackfill"
-          >
-            <i
-              class="button-icon fa-solid"
-              :class="locationBackfillPreparing || locationBackfillRunning ? 'fa-spinner fa-spin' : 'fa-location-dot'"
-              aria-hidden="true"
-            />
-            <span class="sr-only">开始地区字段回填</span>
-          </button>
-        </div>
-      </div>
+            <span class="eyebrow">Location Backfill #{{ selectedBackfillItem.id }}</span>
+            <h2>{{ selectedBackfillItem.title }}</h2>
+            <div class="detail-meta">
+              <span class="status-inline">@{{ selectedBackfillItem.author.username }}</span>
+              <span class="status-inline">{{ selectedBackfillItem.placeName || '未命名地点' }}</span>
+              <span class="status-inline">{{ privacyModeLabel(selectedBackfillItem.privacyMode) }}</span>
+            </div>
 
-      <div class="admin-migration-tool__stats" aria-live="polite">
-        <p>
-          <span>可检查 posts</span>
-          <strong>{{ locationBackfillStatsLoading ? '...' : (locationBackfillStats?.totals.posts ?? '-') }}</strong>
-        </p>
-        <p>
-          <span>可检查 revisions</span>
-          <strong>{{ locationBackfillStatsLoading ? '...' : (locationBackfillStats?.totals.revisions ?? '-') }}</strong>
-        </p>
-        <p>
-          <span>上次执行</span>
-          <strong>{{ locationBackfillSummary ? `${locationBackfillSummary.batchCount} 批` : '未执行' }}</strong>
-        </p>
-      </div>
+            <p class="support-copy">{{ selectedBackfillItem.body || '作者没有留下额外文字。' }}</p>
 
-      <p v-if="locationBackfillProgressMessage" class="status-inline">{{ locationBackfillProgressMessage }}</p>
-      <p v-if="locationBackfillSummary" class="admin-migration-tool__summary">
-        最近执行：扫描 {{ locationBackfillSummary.processedRows }}，预计更新 {{ locationBackfillSummary.wouldUpdateRows }}，
-        实际更新 {{ locationBackfillSummary.updatedRows }}，失败 {{ locationBackfillSummary.failedGeocode + locationBackfillSummary.failedUpdates }}。
-      </p>
+            <div class="field-grid field-grid--two">
+              <div class="review-info-block">
+                <strong>坐标与时间</strong>
+                <p class="support-copy">精确位置：{{ formatLatLng(selectedBackfillItem.exactLocation) }}</p>
+                <p class="support-copy">公开位置：{{ formatLatLng(selectedBackfillItem.publicLocation) }}</p>
+                <p class="support-copy">拍摄时间：{{ formatDateTime(selectedBackfillItem.capturedAt) }}</p>
+                <p class="support-copy">提交时间：{{ formatDateTime(selectedBackfillItem.createdAt) }}</p>
+              </div>
 
-      <details v-if="locationBackfillFailurePreview.length" class="admin-migration-tool__failures">
-        <summary>查看失败明细（展示前 {{ locationBackfillFailurePreview.length }} 条）</summary>
-        <ul>
-          <li v-for="(failure, index) in locationBackfillFailurePreview" :key="`${failure.stage}-${failure.scope}-${failure.key}-${index}`">
-            <strong>{{ failure.stage }} / {{ failure.scope }}</strong>
-            <span>{{ failure.key }}</span>
-            <p>{{ failure.message }}</p>
-          </li>
-        </ul>
-      </details>
+              <div class="review-info-block">
+                <strong>位置预览</strong>
+                <LocationPreviewMap
+                  :exact-location="selectedBackfillItem.exactLocation"
+                  :public-location="selectedBackfillItem.publicLocation"
+                  :show-exact="true"
+                  :compact="true"
+                />
+              </div>
+            </div>
 
-      <p v-if="locationBackfillFeedbackMessage" class="success-banner">{{ locationBackfillFeedbackMessage }}</p>
-      <p v-if="locationBackfillErrorMessage" class="error-banner">{{ locationBackfillErrorMessage }}</p>
+            <div class="field-grid field-grid--two">
+              <label class="field-label">
+                <span>国家</span>
+                <input
+                  v-model="backfillCountryName"
+                  class="field-input"
+                  type="text"
+                  placeholder="可留空"
+                >
+              </label>
+
+              <label class="field-label">
+                <span>地区</span>
+                <input
+                  v-model="backfillRegionName"
+                  class="field-input"
+                  type="text"
+                  placeholder="必填"
+                >
+              </label>
+            </div>
+
+            <label class="field-label">
+              <span>城市 / 区县</span>
+              <input
+                v-model="backfillCityName"
+                class="field-input"
+                type="text"
+                placeholder="可留空"
+              >
+            </label>
+
+            <p class="support-copy backfill-detail__hint">
+              保存时会把空字符串写成空值，只更新当前原稿的 `country / region / city`。
+            </p>
+          </template>
+
+          <div v-else class="empty-state">
+            <h2>从左侧选择一条原稿</h2>
+            <p>保存后当前条目会从队列移除，并自动切到下一条。</p>
+          </div>
+
+          <p v-if="locationBackfillLoadingMore" class="status-inline">正在加载更多候选...</p>
+          <p v-if="locationBackfillFeedbackMessage" class="success-banner">{{ locationBackfillFeedbackMessage }}</p>
+          <p v-if="locationBackfillErrorMessage" class="error-banner">{{ locationBackfillErrorMessage }}</p>
+        </section>
+      </section>
     </section>
 
     <section class="review-layout">
       <aside class="panel panel--page review-list">
         <template v-if="loading">
-          <span class="status-inline">正在加载待审核内容</span>
+          <span class="status-inline">正在加载待审核内容...</span>
         </template>
 
         <template v-else-if="posts.length">
@@ -911,7 +643,7 @@ const submitReview = async (action: 'approve' | 'reject') => {
             <span class="status-inline">{{ privacyModeLabel(selectedPost.privacyMode) }}</span>
           </div>
 
-          <p class="support-copy">{{ selectedPost.body || '作者没有留下额外留言。' }}</p>
+          <p class="support-copy">{{ selectedPost.body || '作者没有留下额外备注。' }}</p>
 
           <div class="field-grid field-grid--two">
             <div class="review-info-block">
@@ -978,3 +710,27 @@ const submitReview = async (action: 'approve' | 'reject') => {
     </section>
   </main>
 </template>
+
+<style scoped>
+.review-layout--backfill {
+  min-height: auto;
+}
+
+.backfill-list {
+  min-height: 24rem;
+}
+
+.backfill-detail {
+  min-height: 24rem;
+}
+
+.backfill-detail__hint {
+  margin: 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(29, 23, 18, 0.08);
+}
+
+html[data-theme="dark"] .backfill-detail__hint {
+  border-color: var(--border);
+}
+</style>

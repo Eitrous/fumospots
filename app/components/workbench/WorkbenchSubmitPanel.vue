@@ -571,6 +571,10 @@ const canSubmit = computed(() => {
   )
 })
 
+const canRunPlaceSearch = computed(() => {
+  return Boolean(searchQuery.value.trim()) && !searching.value
+})
+
 const canAddPhoto = computed(() => selectedPhotos.value.length < MAX_POST_PHOTOS)
 
 const resetUploadProgress = () => {
@@ -1067,12 +1071,29 @@ onBeforeUnmount(() => {
         <div class="field-grid">
           <label class="field-label">
             <span>{{ t('submit.searchLabel') }}</span>
-            <input
-              v-model="searchQuery"
-              class="field-input"
-              :placeholder="t('submit.searchPlaceholder')"
-              @keyup.enter="runPlaceSearch"
-            >
+            <div class="submit-search-row">
+              <input
+                v-model="searchQuery"
+                class="field-input"
+                :placeholder="t('submit.searchPlaceholder')"
+                @keyup.enter="runPlaceSearch"
+              >
+              <button
+                class="workbench-icon-button submit-search-row__button"
+                type="button"
+                :title="searching ? t('submit.searching') : t('submit.searchButton')"
+                :aria-label="searching ? t('submit.searching') : t('submit.searchButton')"
+                :disabled="!canRunPlaceSearch"
+                @click="runPlaceSearch"
+              >
+                <i
+                  class="button-icon fa-solid"
+                  :class="searching ? 'fa-spinner fa-spin' : 'fa-magnifying-glass'"
+                  aria-hidden="true"
+                />
+                <span class="sr-only">{{ searching ? t('submit.searching') : t('submit.searchButton') }}</span>
+              </button>
+            </div>
           </label>
 
           <ul v-if="searchResults.length" class="search-results">
@@ -1273,9 +1294,40 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.44);
 }
 
+.submit-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.submit-search-row__button {
+  width: 3.1rem;
+  min-height: 3.25rem;
+  border-radius: 18px;
+  border: 1px solid rgba(29, 23, 18, 0.08);
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow: none;
+}
+
+.submit-search-row__button:hover,
+.submit-search-row__button:focus-visible {
+  background: rgba(255, 255, 255, 0.78);
+}
+
 .field-input--readonly:focus {
   border-color: var(--border);
   box-shadow: none;
+}
+
+html[data-theme="dark"] .submit-search-row__button {
+  border-color: var(--border);
+  background: rgba(21, 27, 32, 0.66);
+}
+
+html[data-theme="dark"] .submit-search-row__button:hover,
+html[data-theme="dark"] .submit-search-row__button:focus-visible {
+  background: rgba(32, 39, 46, 0.82);
 }
 
 html[data-theme="dark"] .field-input--readonly {
