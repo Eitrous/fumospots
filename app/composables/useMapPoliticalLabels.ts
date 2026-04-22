@@ -1,7 +1,15 @@
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
 const TAIWAN_ISO_A2 = 'TW'
-const TAIWAN_EXCLUDE_FILTER: unknown[] = ['!=', 'iso_a2', TAIWAN_ISO_A2]
+const TAIWAN_WIKIDATA_ID = 'Q865'
+const TAIWAN_COUNTRY_MATCH_FILTER: unknown[] = [
+  'any',
+  ['==', 'iso_a2', TAIWAN_ISO_A2],
+  ['==', 'country_code_iso3166_1_alpha_2', TAIWAN_ISO_A2],
+  ['==', 'wikidata', TAIWAN_WIKIDATA_ID]
+]
+const TAIWAN_EXCLUDE_FILTER: unknown[] = ['!', TAIWAN_COUNTRY_MATCH_FILTER]
+const PLACE_SOURCE_LAYERS = ['place', 'places']
 
 export const TAIWAN_PROVINCE_LAYER_ID = 'fumo-political-taiwan-province-label'
 
@@ -32,7 +40,22 @@ const isArray = (value: unknown): value is unknown[] => {
   return Array.isArray(value)
 }
 
-const includesPlaceClass = (filter: unknown, className: string): boolean => {
+const isPropertyReference = (value: unknown, propertyNames: string[]) => {
+  if (typeof value === 'string') {
+    return propertyNames.includes(value)
+  }
+
+  return isArray(value)
+    && value[0] === 'get'
+    && typeof value[1] === 'string'
+    && propertyNames.includes(value[1])
+}
+
+const includesPlacePropertyValue = (
+  filter: unknown,
+  propertyNames: string[],
+  values: string[]
+): boolean => {
   if (!isArray(filter)) {
     return false
   }
@@ -40,16 +63,21 @@ const includesPlaceClass = (filter: unknown, className: string): boolean => {
   const operator = filter[0]
   const key = filter[1]
 
-  if (operator === '==' && key === 'class' && filter[2] === className) {
+  if (
+    (operator === '==' || operator === '!=')
+    && isPropertyReference(key, propertyNames)
+    && typeof filter[2] === 'string'
+    && values.includes(filter[2])
+  ) {
     return true
   }
 
-  if ((operator === 'in' || operator === '!in') && key === 'class') {
-    return filter.slice(2).includes(className)
+  if ((operator === 'in' || operator === '!in') && isPropertyReference(key, propertyNames)) {
+    return filter.slice(2).some((value) => typeof value === 'string' && values.includes(value))
   }
 
   for (const item of filter) {
-    if (includesPlaceClass(item, className)) {
+    if (includesPlacePropertyValue(item, propertyNames, values)) {
       return true
     }
   }
@@ -57,16 +85,31 @@ const includesPlaceClass = (filter: unknown, className: string): boolean => {
   return false
 }
 
-const hasTaiwanExcludeCondition = (filter: unknown): boolean => {
+const isTaiwanCountryCondition = (filter: unknown): boolean => {
   if (!isArray(filter)) {
     return false
   }
 
   if (
-    filter[0] === '!='
-    && filter[1] === 'iso_a2'
-    && filter[2] === TAIWAN_ISO_A2
+    filter[0] === '=='
+    && (
+      (filter[1] === 'iso_a2' && filter[2] === TAIWAN_ISO_A2)
+      || (filter[1] === 'country_code_iso3166_1_alpha_2' && filter[2] === TAIWAN_ISO_A2)
+      || (filter[1] === 'wikidata' && filter[2] === TAIWAN_WIKIDATA_ID)
+    )
   ) {
+    return true
+  }
+
+  return filter.some(isTaiwanCountryCondition)
+}
+
+const hasTaiwanExcludeCondition = (filter: unknown): boolean => {
+  if (!isArray(filter)) {
+    return false
+  }
+
+  if (filter[0] === '!' && filter.length > 1 && isTaiwanCountryCondition(filter[1])) {
     return true
   }
 
@@ -88,19 +131,29 @@ const getStyleLayers = (map: MapLibreMap): RawStyleLayer[] => {
   return style.layers as RawStyleLayer[]
 }
 
+const usesPlaceSourceLayer = (layer: RawStyleLayer) => {
+  return Boolean(layer['source-layer'] && PLACE_SOURCE_LAYERS.includes(layer['source-layer']))
+}
+
 const findCountryLabelLayers = (layers: RawStyleLayer[]) => {
   return layers.filter((layer) => {
     return layer.type === 'symbol'
-      && layer['source-layer'] === 'place'
-      && includesPlaceClass(layer.filter, 'country')
+      && usesPlaceSourceLayer(layer)
+      && (
+        includesPlacePropertyValue(layer.filter, ['class'], ['country'])
+        || includesPlacePropertyValue(layer.filter, ['kind', 'pmap:kind'], ['country'])
+      )
   })
 }
 
 const findStateLabelLayer = (layers: RawStyleLayer[]) => {
   return layers.find((layer) => {
     return layer.type === 'symbol'
-      && layer['source-layer'] === 'place'
-      && includesPlaceClass(layer.filter, 'state')
+      && usesPlaceSourceLayer(layer)
+      && (
+        includesPlacePropertyValue(layer.filter, ['class'], ['state'])
+        || includesPlacePropertyValue(layer.filter, ['kind', 'pmap:kind'], ['state', 'region'])
+      )
   })
 }
 
@@ -110,7 +163,7 @@ const withTaiwanExcluded = (filter: unknown) => {
   }
 
   if (!filter) {
-    return ['all', ['==', 'class', 'country'], TAIWAN_EXCLUDE_FILTER]
+    return ['all', TAIWAN_EXCLUDE_FILTER]
   }
 
   return ['all', filter, TAIWAN_EXCLUDE_FILTER]
@@ -158,7 +211,9 @@ const createTaiwanProvinceLayer = (
     'source-layer': sourceLayer,
     minzoom: stateLayer?.minzoom ?? 5,
     maxzoom: stateLayer?.maxzoom ?? 10,
-    filter: ['all', ['==', 'class', 'country'], ['==', 'iso_a2', TAIWAN_ISO_A2]],
+    filter: countryLayer.filter
+      ? ['all', countryLayer.filter, TAIWAN_COUNTRY_MATCH_FILTER]
+      : TAIWAN_COUNTRY_MATCH_FILTER,
     layout: {
       ...baseLayout,
       'text-field': label,
@@ -184,6 +239,11 @@ export const updateTaiwanProvinceLabel = (map: MapLibreMap, label: string) => {
 }
 
 export const applyTaiwanProvinceLabelPolicy = (map: MapLibreMap, label: string) => {
+  if (map.getLayer(TAIWAN_PROVINCE_LAYER_ID)) {
+    updateTaiwanProvinceLabel(map, label)
+    return
+  }
+
   const styleLayers = getStyleLayers(map)
   if (!styleLayers.length) {
     return
@@ -196,11 +256,6 @@ export const applyTaiwanProvinceLabelPolicy = (map: MapLibreMap, label: string) 
   }
 
   applyCountryLayerFilters(map, countryLayers)
-
-  if (map.getLayer(TAIWAN_PROVINCE_LAYER_ID)) {
-    updateTaiwanProvinceLabel(map, label)
-    return
-  }
 
   const stateLayer = findStateLabelLayer(styleLayers)
   const targetLayer = createTaiwanProvinceLayer(countryLayers[0], stateLayer, label)

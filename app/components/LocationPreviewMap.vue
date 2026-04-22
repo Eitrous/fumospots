@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { Marker } from 'maplibre-gl'
 import type { LatLng, PrivacyMode } from '~~/shared/fumo'
-import { MAP_DEFAULT_CENTER, MAP_DEFAULT_STYLE_URL, MAP_DEFAULT_ZOOM } from '~~/shared/fumo'
+import { MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM } from '~~/shared/fumo'
+import { resolveHostedMapStyleUrl } from '~~/shared/mapStyle'
 import { applyTaiwanProvinceLabelPolicy } from '~~/app/composables/useMapPoliticalLabels'
 
 const props = withDefaults(defineProps<{
@@ -19,6 +20,7 @@ const props = withDefaults(defineProps<{
 })
 
 const { t, locale } = useI18n()
+const { isDark } = useTheme()
 const config = useRuntimeConfig()
 const mapEl = ref<HTMLDivElement | null>(null)
 const mapRef = shallowRef<import('maplibre-gl').Map | null>(null)
@@ -27,6 +29,15 @@ const taiwanProvinceLabel = computed(() => t('map.taiwanProvinceLabel'))
 let maplibregl: typeof import('maplibre-gl') | null = null
 let publicMarker: Marker | null = null
 let exactMarker: Marker | null = null
+
+const getMapStyleUrl = (dark = isDark.value) => {
+  return resolveHostedMapStyleUrl({
+    theme: dark ? 'dark' : 'light',
+    locale: locale.value,
+    lightStyleUrl: config.public.mapStyleUrl,
+    darkStyleUrl: config.public.mapDarkStyleUrl
+  })
+}
 
 const markerElement = (className: string, label: string) => {
   const el = document.createElement('div')
@@ -120,17 +131,30 @@ const applyPoliticalLabels = () => {
   applyTaiwanProvinceLabelPolicy(mapRef.value, taiwanProvinceLabel.value)
 }
 
+watch([isDark, locale], ([dark]) => {
+  if (!mapRef.value) {
+    return
+  }
+
+  mapRef.value.setStyle(getMapStyleUrl(dark))
+
+  mapRef.value.once('style.load', () => {
+    applyPoliticalLabels()
+    syncMarkers()
+    fitBoundsToMarkers()
+  })
+})
+
 onMounted(async () => {
   if (!mapEl.value) {
     return
   }
 
   maplibregl = await import('maplibre-gl')
-  const style = config.public.mapStyleUrl || MAP_DEFAULT_STYLE_URL
 
   mapRef.value = new maplibregl.Map({
     container: mapEl.value,
-    style,
+    style: getMapStyleUrl(),
     center: MAP_DEFAULT_CENTER,
     zoom: MAP_DEFAULT_ZOOM
   })

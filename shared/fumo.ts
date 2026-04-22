@@ -254,9 +254,9 @@ export type EditablePostDetail = Omit<SubmitPostPayload, 'photos'> & {
 
 export const STORAGE_BUCKET = 'fumo'
 export const MAP_DEFAULT_STYLE_URL =
-  'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
-export const MAP_DARK_STYLE_URL = 
-  'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+  '/api/map/style/light'
+export const MAP_DARK_STYLE_URL =
+  '/api/map/style/dark'
 export const MAP_DEFAULT_CENTER: [number, number] = [116.397389, 39.908722]
 export const MAP_DEFAULT_ZOOM = 1.55
 export const MAX_TITLE_LENGTH = 80

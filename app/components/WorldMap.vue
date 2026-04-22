@@ -8,10 +8,9 @@ import type {
 } from '~~/shared/fumo'
 import {
   MAP_DEFAULT_CENTER,
-  MAP_DEFAULT_STYLE_URL,
-  MAP_DARK_STYLE_URL,
   MAP_DEFAULT_ZOOM
 } from '~~/shared/fumo'
+import { resolveHostedMapStyleUrl } from '~~/shared/mapStyle'
 import { applyTaiwanProvinceLabelPolicy } from '~~/app/composables/useMapPoliticalLabels'
 
 const props = withDefaults(defineProps<{
@@ -76,6 +75,15 @@ const REGION_FIT_DURATION_MS = 720
 let selectedPostFocusSequence = 0
 let regionHighlightSequence = 0
 let pendingRegionFitKey: string | null = null
+
+const getMapStyleUrl = (dark = isDark.value) => {
+  return resolveHostedMapStyleUrl({
+    theme: dark ? 'dark' : 'light',
+    locale: locale.value,
+    lightStyleUrl: config.public.mapStyleUrl,
+    darkStyleUrl: config.public.mapDarkStyleUrl
+  })
+}
 
 const emptyCollection: PublicMapCollection = {
   type: 'FeatureCollection',
@@ -514,6 +522,7 @@ const ensurePostLayers = () => {
       filter: ['has', 'point_count'],
       layout: {
         'text-field': ['get', 'point_count_abbreviated'],
+        'text-font': ['Noto Sans Medium'],
         'text-size': 12
       },
       paint: {
@@ -615,13 +624,12 @@ const applyPoliticalLabels = () => {
   applyTaiwanProvinceLabelPolicy(mapRef.value, taiwanProvinceLabel.value)
 }
 
-watch(isDark, (dark) => {
+watch([isDark, locale], ([dark]) => {
   if (!mapRef.value) {
     return
   }
 
-  const style = dark ? MAP_DARK_STYLE_URL : (config.public.mapStyleUrl || MAP_DEFAULT_STYLE_URL)
-  mapRef.value.setStyle(style)
+  mapRef.value.setStyle(getMapStyleUrl(dark))
 
   mapRef.value.once('style.load', () => {
     applyPoliticalLabels()
@@ -639,11 +647,10 @@ onMounted(async () => {
   startMapLoading()
   try {
     maplibregl = await import('maplibre-gl')
-    const style = isDark.value ? MAP_DARK_STYLE_URL : (config.public.mapStyleUrl || MAP_DEFAULT_STYLE_URL)
 
     mapRef.value = new maplibregl.Map({
       container: mapEl.value,
-      style,
+      style: getMapStyleUrl(),
       center: MAP_DEFAULT_CENTER,
       zoom: MAP_DEFAULT_ZOOM
     })

@@ -1,11 +1,6 @@
 import { setResponseHeader, type H3Event } from 'h3'
 import { MAP_DARK_STYLE_URL, MAP_DEFAULT_STYLE_URL } from '~~/shared/fumo'
 
-const STATIC_CARTO_SOURCES = [
-  'https://basemaps.cartocdn.com',
-  'https://*.basemaps.cartocdn.com'
-]
-
 const getOrigin = (value: string | undefined) => {
   if (!value) {
     return null
@@ -26,6 +21,8 @@ const buildCsp = (event: H3Event) => {
   const config = useRuntimeConfig(event)
   const supabaseOrigin = getOrigin(config.public.supabaseUrl)
   const mapStyleOrigin = getOrigin(config.public.mapStyleUrl)
+  const mapDarkStyleOrigin = getOrigin(config.public.mapDarkStyleUrl)
+  const pmtilesOrigin = getOrigin(config.public.pmtilesUrl)
   const defaultMapOrigin = getOrigin(MAP_DEFAULT_STYLE_URL)
   const darkMapOrigin = getOrigin(MAP_DARK_STYLE_URL)
 
@@ -36,9 +33,9 @@ const buildCsp = (event: H3Event) => {
     supabaseOrigin,
     'https://*.supabase.co',
     mapStyleOrigin,
+    mapDarkStyleOrigin,
     defaultMapOrigin,
-    darkMapOrigin,
-    ...STATIC_CARTO_SOURCES
+    darkMapOrigin
   ])
 
   const connectSources = unique([
@@ -46,10 +43,11 @@ const buildCsp = (event: H3Event) => {
     supabaseOrigin,
     'https://*.supabase.co',
     'wss://*.supabase.co',
+    pmtilesOrigin,
     mapStyleOrigin,
+    mapDarkStyleOrigin,
     defaultMapOrigin,
     darkMapOrigin,
-    ...STATIC_CARTO_SOURCES,
     ...(import.meta.dev ? ['http://localhost:*', 'ws://localhost:*'] : [])
   ])
 
