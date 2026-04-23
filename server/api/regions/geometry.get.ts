@@ -4,6 +4,7 @@ import {
   fetchSearchGeocodeEntries,
   getPreferredGeocodeAcceptLanguage,
   normalizeGeocodeResult,
+  normalizeLocationScopeForLocale,
   type NominatimSearchEntry
 } from '~~/server/utils/geocode'
 import {
@@ -31,8 +32,12 @@ const displayNameContains = (displayName: string, value: string | null) => {
   return Boolean(normalizedValue && normalizeScopeValue(displayName).includes(normalizedValue))
 }
 
-const matchesScope = (entry: NominatimSearchEntry, scope: RegionScope) => {
-  const result = normalizeGeocodeResult(entry)
+const matchesScope = (
+  entry: NominatimSearchEntry,
+  scope: RegionScope,
+  acceptLanguage: string
+) => {
+  const result = normalizeGeocodeResult(entry, acceptLanguage)
 
   if (scope.countryName) {
     const matchedCountry = fieldMatches(result.countryName, scope.countryName)
@@ -60,8 +65,12 @@ const matchesScope = (entry: NominatimSearchEntry, scope: RegionScope) => {
     || displayNameContains(entry.display_name, scope.cityName)
 }
 
-const pickMatchedEntry = (entries: NominatimSearchEntry[], scope: RegionScope) => {
-  const exactMatch = entries.find((entry) => matchesScope(entry, scope))
+const pickMatchedEntry = (
+  entries: NominatimSearchEntry[],
+  scope: RegionScope,
+  acceptLanguage: string
+) => {
+  const exactMatch = entries.find((entry) => matchesScope(entry, scope, acceptLanguage))
   if (exactMatch) {
     return exactMatch
   }
@@ -115,11 +124,12 @@ export default defineEventHandler(async (event): Promise<RegionGeometryResponse>
     })
   }
 
-  const scope: RegionScope = {
+  const acceptLanguage = getPreferredGeocodeAcceptLanguage(event)
+  const scope: RegionScope = normalizeLocationScopeForLocale({
     countryName: getTrimmedQueryValue(query.country),
     regionName,
     cityName: getTrimmedQueryValue(query.city)
-  }
+  }, acceptLanguage)
 
   await enforceRateLimit(event, 'geocodeIp', getRateLimitIdentifier(event))
   if (isPublicNominatimBaseUrl(config.geocodeBaseUrl)) {
@@ -135,7 +145,7 @@ export default defineEventHandler(async (event): Promise<RegionGeometryResponse>
       {
         limit: 3,
         polygonGeoJson: true,
-        acceptLanguage: getPreferredGeocodeAcceptLanguage(event)
+        acceptLanguage
       }
     )
   } catch {
@@ -145,7 +155,7 @@ export default defineEventHandler(async (event): Promise<RegionGeometryResponse>
     })
   }
 
-  const matchedEntry = pickMatchedEntry(entries, scope)
+  const matchedEntry = pickMatchedEntry(entries, scope, acceptLanguage)
   if (!matchedEntry) {
     throw createError({
       statusCode: 404,

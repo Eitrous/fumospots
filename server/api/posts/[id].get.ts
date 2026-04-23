@@ -3,6 +3,10 @@ import {
   createPublicServerClient,
   getOptionalAuthenticatedUser
 } from '~~/server/utils/supabase'
+import {
+  getPreferredGeocodeAcceptLanguage,
+  normalizeLocationScopeForLocale
+} from '~~/server/utils/geocode'
 import { getOrderedPhotoRows, signPhotoRows, type PhotoRow } from '~~/server/utils/posts'
 
 export default defineEventHandler(async (event): Promise<PublicPostDetail> => {
@@ -14,6 +18,7 @@ export default defineEventHandler(async (event): Promise<PublicPostDetail> => {
 
   const supabase = createPublicServerClient(event)
   const auth = await getOptionalAuthenticatedUser(event)
+  const acceptLanguage = getPreferredGeocodeAcceptLanguage(event)
 
   const { data, error } = await supabase
     .from('public_approved_posts')
@@ -76,6 +81,11 @@ export default defineEventHandler(async (event): Promise<PublicPostDetail> => {
     imageUrl: null,
     thumbUrl: null
   }
+  const locationScope = normalizeLocationScopeForLocale({
+    countryName: data.country_name,
+    regionName: data.region_name,
+    cityName: data.city_name
+  }, acceptLanguage)
 
   const { data: likeCount, error: likeCountError } = await supabase
     .from('public_approved_post_like_counts')
@@ -120,9 +130,9 @@ export default defineEventHandler(async (event): Promise<PublicPostDetail> => {
     likeCount: likeCount?.like_count ?? 0,
     likedByViewer,
     placeName: data.place_name,
-    countryName: data.country_name,
-    regionName: data.region_name,
-    cityName: data.city_name,
+    countryName: locationScope.countryName,
+    regionName: locationScope.regionName,
+    cityName: locationScope.cityName,
     publicLocation: data.public_lat != null && data.public_lng != null
       ? {
           lat: data.public_lat,

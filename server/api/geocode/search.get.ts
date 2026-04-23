@@ -13,6 +13,7 @@ import {
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
   const q = String(getQuery(event).q || '').trim()
+  const acceptLanguage = getPreferredGeocodeAcceptLanguage(event)
 
   if (!q) {
     return []
@@ -33,10 +34,10 @@ export default defineEventHandler(async (event) => {
   try {
     const results = await fetchSearchGeocodeEntries(event, q, {
       limit: 6,
-      acceptLanguage: getPreferredGeocodeAcceptLanguage(event)
+      acceptLanguage
     })
 
-    return results.map(normalizeGeocodeResult)
+    return results.map((result) => normalizeGeocodeResult(result, acceptLanguage))
   } catch {
     throw createError({
       statusCode: 502,

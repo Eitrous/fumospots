@@ -42,7 +42,7 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthState()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const { formatLatLng } = useFormatters()
 const { invalidatePostDetail } = usePostDetailCache()
 const { invalidateUserPage } = useUserPageCache()
@@ -205,7 +205,10 @@ const loadEditablePost = async () => {
 
   try {
     const detail = await $fetch<EditablePostDetail>(`/api/posts/${props.postId}/edit`, {
-      headers: auth.authHeaders.value
+      headers: {
+        ...auth.authHeaders.value,
+        'accept-language': locale.value
+      }
     })
     applyEditablePost(detail)
   } catch (error) {
@@ -313,6 +316,9 @@ const reverseLookupLocation = async (location: LatLng) => {
 
   try {
     const result = await $fetch<GeocodeResult>('/api/geocode/reverse', {
+      headers: {
+        'accept-language': locale.value
+      },
       query: {
         lat: location.lat,
         lng: location.lng
@@ -355,6 +361,9 @@ const runPlaceSearch = async () => {
 
   try {
     searchResults.value = await $fetch<GeocodeResult[]>('/api/geocode/search', {
+      headers: {
+        'accept-language': locale.value
+      },
       query: {
         q: searchQuery.value.trim()
       }
@@ -547,7 +556,8 @@ watch(
     auth.ready.value,
     auth.user.value?.id,
     auth.hasUsername.value,
-    auth.authHeaders.value.Authorization
+    auth.authHeaders.value.Authorization,
+    locale.value
   ],
   ([editing, postId, ready, userId, hasUsername]) => {
     if (editing && postId && ready && userId && hasUsername) {
@@ -555,6 +565,15 @@ watch(
     }
   },
   { immediate: true }
+)
+
+watch(
+  () => locale.value,
+  () => {
+    if (!isEditMode.value && exactLocation.value) {
+      void reverseLookupLocation(exactLocation.value)
+    }
+  }
 )
 
 const canSubmit = computed(() => {

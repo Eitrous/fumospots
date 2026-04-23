@@ -6,7 +6,7 @@ const props = defineProps<{
   postId: number
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const auth = useAuthState()
 const { formatDateTime, formatLatLng } = useFormatters()
 const { getPostDetail, updatePostDetailLike } = usePostDetailCache()
@@ -367,7 +367,7 @@ watch(likeDialogOpen, (isOpen) => {
 })
 
 watch(
-  () => [props.postId, auth.ready.value, auth.authHeaders.value.Authorization || ''] as const,
+  () => [props.postId, auth.ready.value, auth.authHeaders.value.Authorization || '', locale.value] as const,
   () => {
     closeImageViewer()
     void loadPost()

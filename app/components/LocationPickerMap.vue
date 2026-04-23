@@ -3,10 +3,9 @@ import type { Marker } from 'maplibre-gl'
 import type { LatLng, PrivacyMode } from '~~/shared/fumo'
 import {
   MAP_DEFAULT_CENTER,
-  MAP_DEFAULT_STYLE_URL,
-  MAP_DARK_STYLE_URL,
   MAP_DEFAULT_ZOOM
 } from '~~/shared/fumo'
+import { resolveHostedMapStyleUrl } from '~~/shared/mapStyle'
 import { applyTaiwanProvinceLabelPolicy } from '~~/app/composables/useMapPoliticalLabels'
 
 const props = withDefaults(defineProps<{
@@ -33,6 +32,15 @@ const taiwanProvinceLabel = computed(() => t('map.taiwanProvinceLabel'))
 let maplibregl: typeof import('maplibre-gl') | null = null
 let exactMarker: Marker | null = null
 let publicMarker: Marker | null = null
+
+const getMapStyleUrl = (dark = isDark.value) => {
+  return resolveHostedMapStyleUrl({
+    theme: dark ? 'dark' : 'light',
+    locale: locale.value,
+    lightStyleUrl: config.public.mapStyleUrl,
+    darkStyleUrl: config.public.mapDarkStyleUrl
+  })
+}
 
 const markerElement = (className: string, label: string) => {
   const el = document.createElement('div')
@@ -158,13 +166,12 @@ const applyPoliticalLabels = () => {
   applyTaiwanProvinceLabelPolicy(mapRef.value, taiwanProvinceLabel.value)
 }
 
-watch(isDark, (dark) => {
+watch([isDark, locale], ([dark]) => {
   if (!mapRef.value) {
     return
   }
 
-  const style = dark ? MAP_DARK_STYLE_URL : (config.public.mapStyleUrl || MAP_DEFAULT_STYLE_URL)
-  mapRef.value.setStyle(style)
+  mapRef.value.setStyle(getMapStyleUrl(dark))
 
   mapRef.value.once('style.load', () => {
     applyPoliticalLabels()
@@ -179,11 +186,10 @@ onMounted(async () => {
   }
 
   maplibregl = await import('maplibre-gl')
-  const style = isDark.value ? MAP_DARK_STYLE_URL : (config.public.mapStyleUrl || MAP_DEFAULT_STYLE_URL)
 
   mapRef.value = new maplibregl.Map({
     container: mapEl.value,
-    style,
+    style: getMapStyleUrl(),
     center: MAP_DEFAULT_CENTER,
     zoom: MAP_DEFAULT_ZOOM
   })

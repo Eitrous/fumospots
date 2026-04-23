@@ -17,22 +17,26 @@ type RegionPageRequestOptions = {
 const pendingRegionPageRequests = new Map<string, Promise<PublicRegionPage>>()
 
 const normalizeScopeValue = (value: string | null) => value?.trim().toLowerCase() || ''
+const normalizeLocaleKey = (value: string | null | undefined) => value?.trim().toLowerCase() || 'default'
 
 const cacheKeyForRegionPage = (
   scope: RegionScope,
   sort: RegionSort,
-  viewerId: string | null
+  viewerId: string | null,
+  localeCode: string | null
 ) => {
   return [
     normalizeScopeValue(scope.countryName),
     normalizeScopeValue(scope.regionName),
     normalizeScopeValue(scope.cityName),
     sort,
-    viewerId || 'public'
+    viewerId || 'public',
+    normalizeLocaleKey(localeCode)
   ].join('::')
 }
 
 export const useRegionPageCache = () => {
+  const { locale } = useI18n()
   const cache = useState<Record<string, CachedRegionPage>>('region-page-cache', () => ({}))
 
   const removeCacheKey = (key: string) => {
@@ -123,7 +127,8 @@ export const useRegionPageCache = () => {
   ) => {
     pruneExpiredRegionPages()
 
-    const key = cacheKeyForRegionPage(scope, sort, options.viewerId ?? null)
+    const localeCode = locale.value || null
+    const key = cacheKeyForRegionPage(scope, sort, options.viewerId ?? null, localeCode)
     const cached = getCachedRegionPage(key)
     if (cached) {
       return cached
@@ -135,7 +140,10 @@ export const useRegionPageCache = () => {
     }
 
     const request = $fetch<PublicRegionPage>('/api/regions/posts', {
-      headers: options.headers,
+      headers: {
+        ...(options.headers || {}),
+        ...(localeCode ? { 'accept-language': localeCode } : {})
+      },
       query: {
         country: scope.countryName || undefined,
         region: scope.regionName,

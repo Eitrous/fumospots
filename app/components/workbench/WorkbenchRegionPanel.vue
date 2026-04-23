@@ -8,7 +8,7 @@ const props = defineProps<{
 }>()
 
 const auth = useAuthState()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const { formatDateTime } = useFormatters()
 const { getRegionPage } = useRegionPageCache()
 
@@ -91,7 +91,8 @@ watch(
     props.scope.cityName,
     props.sort,
     auth.ready.value,
-    auth.authHeaders.value.Authorization
+    auth.authHeaders.value.Authorization,
+    locale.value
   ],
   () => {
     void loadRegionPage()

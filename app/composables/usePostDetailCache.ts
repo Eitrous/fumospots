@@ -17,11 +17,17 @@ type PostDetailRequestOptions = {
 const pendingPostDetailRequests = new Map<string, Promise<PublicPostDetail>>()
 
 const cacheKeyPrefixForPost = (postId: number) => `${postId}::`
-const cacheKeyForPost = (postId: number, viewerId: string | null = null) => {
-  return `${cacheKeyPrefixForPost(postId)}${viewerId || 'public'}`
+const normalizeLocaleKey = (value: string | null | undefined) => value?.trim().toLowerCase() || 'default'
+const cacheKeyForPost = (
+  postId: number,
+  viewerId: string | null = null,
+  localeCode: string | null = null
+) => {
+  return `${cacheKeyPrefixForPost(postId)}${viewerId || 'public'}::${normalizeLocaleKey(localeCode)}`
 }
 
 export const usePostDetailCache = () => {
+  const { locale } = useI18n()
   const cache = useState<Record<string, CachedPostDetail>>('post-detail-cache', () => ({}))
 
   const removeCacheKey = (key: string) => {
@@ -108,7 +114,8 @@ export const usePostDetailCache = () => {
   const getPostDetail = async (postId: number, options: PostDetailRequestOptions = {}) => {
     pruneExpiredPostDetails()
 
-    const key = cacheKeyForPost(postId, options.viewerId ?? null)
+    const localeCode = locale.value || null
+    const key = cacheKeyForPost(postId, options.viewerId ?? null, localeCode)
     const cached = getCachedPostDetail(key)
     if (cached) {
       return cached
@@ -120,7 +127,10 @@ export const usePostDetailCache = () => {
     }
 
     const request = $fetch<PublicPostDetail>(`/api/posts/${postId}`, {
-      headers: options.headers
+      headers: {
+        ...(options.headers || {}),
+        ...(localeCode ? { 'accept-language': localeCode } : {})
+      }
     })
       .then((post) => {
         setPostDetail(key, post)
@@ -135,7 +145,7 @@ export const usePostDetailCache = () => {
   }
 
   const prefetchPostDetail = (postId: number, options: PostDetailRequestOptions = {}) => {
-    const key = cacheKeyForPost(postId, options.viewerId ?? null)
+    const key = cacheKeyForPost(postId, options.viewerId ?? null, locale.value || null)
     void getPostDetail(postId, options).catch(() => {
       pendingPostDetailRequests.delete(key)
     })

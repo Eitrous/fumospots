@@ -2,6 +2,10 @@ import { getRouterParam, type H3Event } from 'h3'
 import type { EditablePostDetail } from '~~/shared/fumo'
 import { createPublicServerClient, requireAuthenticatedUser } from '~~/server/utils/supabase'
 import {
+  getPreferredGeocodeAcceptLanguage,
+  normalizeLocationScopeForLocale
+} from '~~/server/utils/geocode'
+import {
   getOrderedPhotoRows,
   signEditablePhotoRows,
   type PhotoRow
@@ -15,6 +19,11 @@ const toEditableDetail = async (
   photoRows: PhotoRow[]
 ): Promise<EditablePostDetail> => {
   const photos = await signEditablePhotoRows(event, photoRows, 60 * 60)
+  const locationScope = normalizeLocationScopeForLocale({
+    countryName: source.country_name,
+    regionName: source.region_name,
+    cityName: source.city_name
+  }, getPreferredGeocodeAcceptLanguage(event))
 
   return {
     id: source.post_id || source.id,
@@ -34,9 +43,9 @@ const toEditableDetail = async (
     },
     privacyMode: source.privacy_mode,
     placeName: source.place_name || '',
-    countryName: source.country_name,
-    regionName: source.region_name,
-    cityName: source.city_name
+    countryName: locationScope.countryName,
+    regionName: locationScope.regionName,
+    cityName: locationScope.cityName
   }
 }
 

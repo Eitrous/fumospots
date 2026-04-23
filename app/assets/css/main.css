@@ -1209,7 +1209,7 @@ html[data-theme="dark"] .workbench-user-post-row {
 }
 
 .map-pin--public {
-  background: #58c78f;
+  background: #16925f;
 }
 
 @media (max-width: 980px) {
@@ -1739,7 +1739,7 @@ html[data-theme="dark"] .workbench-panel--submit > section.field-grid {
   position: relative;
   min-width: 0;
   min-height: 100svh;
-  background: #e8e8e8;
+  background: #e5e2dc;
 }
 
 html[data-theme="dark"] .workbench-sidebar {

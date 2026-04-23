@@ -12,16 +12,19 @@ type CachedRegionGeometry = {
 const pendingRegionGeometryRequests = new Map<string, Promise<RegionGeometryResponse>>()
 
 const normalizeScopeValue = (value: string | null) => value?.trim().toLowerCase() || ''
+const normalizeLocaleKey = (value: string | null | undefined) => value?.trim().toLowerCase() || 'default'
 
-const cacheKeyForRegionGeometry = (scope: RegionScope) => {
+const cacheKeyForRegionGeometry = (scope: RegionScope, localeCode: string | null) => {
   return [
     normalizeScopeValue(scope.countryName),
     normalizeScopeValue(scope.regionName),
-    normalizeScopeValue(scope.cityName)
+    normalizeScopeValue(scope.cityName),
+    normalizeLocaleKey(localeCode)
   ].join('::')
 }
 
 export const useRegionGeometryCache = () => {
+  const { locale } = useI18n()
   const cache = useState<Record<string, CachedRegionGeometry>>('region-geometry-cache', () => ({}))
 
   const removeCacheKey = (key: string) => {
@@ -108,7 +111,8 @@ export const useRegionGeometryCache = () => {
   const getRegionGeometry = async (scope: RegionScope) => {
     pruneExpiredRegionGeometry()
 
-    const key = cacheKeyForRegionGeometry(scope)
+    const localeCode = locale.value || null
+    const key = cacheKeyForRegionGeometry(scope, localeCode)
     const cached = getCachedRegionGeometry(key)
     if (cached) {
       return cached
@@ -120,6 +124,9 @@ export const useRegionGeometryCache = () => {
     }
 
     const request = $fetch<RegionGeometryResponse>('/api/regions/geometry', {
+      headers: {
+        ...(localeCode ? { 'accept-language': localeCode } : {})
+      },
       query: {
         country: scope.countryName || undefined,
         region: scope.regionName,
