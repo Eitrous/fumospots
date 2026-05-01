@@ -19,6 +19,7 @@ const unique = (values: Array<string | null | undefined>) => {
 
 const buildCsp = (event: H3Event) => {
   const config = useRuntimeConfig(event)
+  const cspReportEnabled = config.securityCspReportEnabled
   const supabaseOrigin = getOrigin(config.public.supabaseUrl)
   const mapStyleOrigin = getOrigin(config.public.mapStyleUrl)
   const mapDarkStyleOrigin = getOrigin(config.public.mapDarkStyleUrl)
@@ -65,14 +66,19 @@ const buildCsp = (event: H3Event) => {
     ["worker-src", "'self'", 'blob:'],
     ["child-src", 'blob:'],
     ["frame-src", "'none'"],
-    ["manifest-src", "'self'"],
-    ["report-uri", '/api/security/csp-report']
+    ["manifest-src", "'self'"]
   ]
+
+  if (cspReportEnabled) {
+    directives.push(["report-uri", '/api/security/csp-report'])
+  }
 
   return directives.map((directive) => directive.join(' ')).join('; ')
 }
 
 export default defineEventHandler((event) => {
+  const config = useRuntimeConfig(event)
+
   setResponseHeader(event, 'X-Frame-Options', 'DENY')
   setResponseHeader(event, 'X-Content-Type-Options', 'nosniff')
   setResponseHeader(event, 'Referrer-Policy', 'strict-origin-when-cross-origin')
@@ -81,7 +87,10 @@ export default defineEventHandler((event) => {
     'Permissions-Policy',
     'camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)'
   )
-  setResponseHeader(event, 'Content-Security-Policy-Report-Only', buildCsp(event))
+
+  if (config.securityCspReportEnabled) {
+    setResponseHeader(event, 'Content-Security-Policy-Report-Only', buildCsp(event))
+  }
 
   if (!import.meta.dev) {
     setResponseHeader(event, 'Strict-Transport-Security', 'max-age=15552000; includeSubDomains')

@@ -51,6 +51,7 @@ export default defineNuxtConfig({
     r2SignedUrlTtlSeconds: process.env.R2_SIGNED_URL_TTL_SECONDS || String(60 * 30),
     geocodeBaseUrl: process.env.GEOCODE_BASE_URL || 'https://nominatim.openstreetmap.org',
     geocodeUserAgent: process.env.GEOCODE_USER_AGENT || 'fumotravel/1.0',
+    securityCspReportEnabled: process.env.SECURITY_CSP_REPORT_ENABLED === 'true',
     securityAlertsEnabled: process.env.SECURITY_ALERTS_ENABLED === 'true',
     securityAlertWebhookUrl: process.env.SECURITY_ALERT_WEBHOOK_URL,
     securityAlertWebhookToken: process.env.SECURITY_ALERT_WEBHOOK_TOKEN,
