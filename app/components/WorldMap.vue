@@ -86,6 +86,8 @@ let initialSourceLoadScheduled = false
 let mapPostsAbortController: AbortController | null = null
 let mapResizeObserver: ResizeObserver | null = null
 let mapResizeFrame: number | null = null
+let mapRuntimeSyncFrame: number | null = null
+let pendingStyleSourceRefresh = false
 
 const getMapStyleUrl = (dark = isDark.value) => {
   return resolveHostedMapStyleUrl({
@@ -854,6 +856,22 @@ const syncMapRuntimeState = () => {
   syncRegionHighlightSource()
   syncSelectionSource()
   fitPendingRegionBounds()
+
+  if (pendingStyleSourceRefresh && initialSourceLoaded) {
+    pendingStyleSourceRefresh = false
+    void refreshSource({ force: true })
+  }
+}
+
+const scheduleMapRuntimeSync = () => {
+  if (!import.meta.client || mapRuntimeSyncFrame !== null) {
+    return
+  }
+
+  mapRuntimeSyncFrame = window.requestAnimationFrame(() => {
+    mapRuntimeSyncFrame = null
+    syncMapRuntimeState()
+  })
 }
 
 const refreshVisibleMapSource = () => {
@@ -879,8 +897,10 @@ watch([isDark, locale], async ([dark]) => {
       return
     }
 
+    pendingStyleSourceRefresh = initialSourceLoaded
     mapRef.value.setStyle(style)
     scheduleMapResize()
+    scheduleMapRuntimeSync()
   } finally {
     finishMapLoading()
   }
@@ -917,16 +937,16 @@ onMounted(async () => {
   window.addEventListener('focus', refreshVisibleMapSource)
   document.addEventListener('visibilitychange', refreshVisibleMapSource)
 
-  mapRef.value.on('style.load', () => {
-    syncMapRuntimeState()
-  })
+  mapRef.value.on('style.load', scheduleMapRuntimeSync)
+  mapRef.value.on('styledata', scheduleMapRuntimeSync)
 
   mapRef.value.on('idle', () => {
     scheduleMapResize()
+    scheduleMapRuntimeSync()
   })
 
   mapRef.value.on('load', () => {
-    syncMapRuntimeState()
+    scheduleMapRuntimeSync()
 
     if (props.selectedPostId) {
       void focusSelectedPost(props.selectedPostId)
@@ -979,6 +999,10 @@ onBeforeUnmount(() => {
   if (mapResizeFrame !== null) {
     window.cancelAnimationFrame(mapResizeFrame)
     mapResizeFrame = null
+  }
+  if (mapRuntimeSyncFrame !== null) {
+    window.cancelAnimationFrame(mapRuntimeSyncFrame)
+    mapRuntimeSyncFrame = null
   }
   window.removeEventListener('focus', refreshVisibleMapSource)
   document.removeEventListener('visibilitychange', refreshVisibleMapSource)
