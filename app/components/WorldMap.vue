@@ -82,7 +82,10 @@ let mapStyleSequence = 0
 let pendingRegionFitKey: string | null = null
 let mapInteractionsBound = false
 let initialSourceLoaded = false
+let initialSourceLoadScheduled = false
 let mapPostsAbortController: AbortController | null = null
+let mapResizeObserver: ResizeObserver | null = null
+let mapResizeFrame: number | null = null
 
 const getMapStyleUrl = (dark = isDark.value) => {
   return resolveHostedMapStyleUrl({
@@ -302,16 +305,37 @@ const buildRegionHighlightCollection = (
   }
 }
 
-const fetchGeoJson = async (bounds: MapBoundsBox, signal?: AbortSignal) => {
+const fetchGeoJson = async (
+  bounds: MapBoundsBox,
+  signal?: AbortSignal,
+  options: { force?: boolean } = {}
+) => {
+  const query: Record<string, number | string> = {
+    west: bounds.west,
+    south: bounds.south,
+    east: bounds.east,
+    north: bounds.north
+  }
+
+  if (options.force) {
+    query.refresh = String(Date.now())
+  }
+
   return await $fetch<PublicMapPointCollection>('/api/map/posts', {
     signal,
-    query: {
-      west: bounds.west,
-      south: bounds.south,
-      east: bounds.east,
-      north: bounds.north
-    }
+    query
   })
+}
+
+const fetchInitialMapStyle = async () => {
+  const styleUrl = getMapStyleUrl()
+
+  try {
+    return await fetchHostedMapStyle(styleUrl)
+  } catch {
+    await new Promise(resolve => window.setTimeout(resolve, 160))
+    return await fetchHostedMapStyle(styleUrl)
+  }
 }
 
 const getSelectedPostCoordinates = async (postId: number): Promise<[number, number] | null> => {
@@ -440,13 +464,13 @@ const isAbortError = (error: unknown) => {
   return error instanceof Error && error.name === 'AbortError'
 }
 
-const refreshSource = async (options: { loadingStarted?: boolean } = {}) => {
+const refreshSource = async (options: { loadingStarted?: boolean, force?: boolean } = {}) => {
   if (!mapRef.value) {
     return
   }
 
   const viewportBounds = getViewportBounds()
-  if (viewportBounds && loadedBounds.value && isBoundsInside(viewportBounds, loadedBounds.value)) {
+  if (!options.force && viewportBounds && loadedBounds.value && isBoundsInside(viewportBounds, loadedBounds.value)) {
     return
   }
 
@@ -464,7 +488,7 @@ const refreshSource = async (options: { loadingStarted?: boolean } = {}) => {
     startMapLoading()
   }
   try {
-    const geojson = await fetchGeoJson(requestBounds, abortController.signal)
+    const geojson = await fetchGeoJson(requestBounds, abortController.signal, { force: options.force })
     const nextCollection = geojson || emptyCollection
 
     if (
@@ -655,6 +679,29 @@ const setupMapLayers = () => {
   ensurePostLayers()
 }
 
+const scheduleMapResize = () => {
+  if (!import.meta.client || mapResizeFrame !== null) {
+    return
+  }
+
+  mapResizeFrame = window.requestAnimationFrame(() => {
+    mapResizeFrame = null
+    mapRef.value?.resize()
+  })
+}
+
+const observeMapContainer = () => {
+  if (!import.meta.client || !mapEl.value || typeof ResizeObserver === 'undefined') {
+    return
+  }
+
+  mapResizeObserver?.disconnect()
+  mapResizeObserver = new ResizeObserver(() => {
+    scheduleMapResize()
+  })
+  mapResizeObserver.observe(mapEl.value)
+}
+
 const bindMapInteractions = () => {
   if (!mapRef.value || mapInteractionsBound) {
     return
@@ -733,10 +780,11 @@ const bindMapInteractions = () => {
 }
 
 const scheduleInitialSourceLoad = () => {
-  if (!import.meta.client) {
+  if (!import.meta.client || initialSourceLoadScheduled) {
     return
   }
 
+  initialSourceLoadScheduled = true
   markMapBusy()
   startMapLoading()
 
@@ -794,6 +842,28 @@ const applyPoliticalLabels = () => {
   applyTaiwanProvinceLabelPolicy(mapRef.value, taiwanProvinceLabel.value)
 }
 
+const syncMapRuntimeState = () => {
+  if (!mapRef.value || !mapRef.value.isStyleLoaded()) {
+    return
+  }
+
+  scheduleMapResize()
+  applyPoliticalLabels()
+  setupMapLayers()
+  bindMapInteractions()
+  syncRegionHighlightSource()
+  syncSelectionSource()
+  fitPendingRegionBounds()
+}
+
+const refreshVisibleMapSource = () => {
+  if (!import.meta.client || !initialSourceLoaded || document.hidden) {
+    return
+  }
+
+  void refreshSource({ force: true })
+}
+
 watch([isDark, locale], async ([dark]) => {
   if (!mapRef.value) {
     return
@@ -810,13 +880,7 @@ watch([isDark, locale], async ([dark]) => {
     }
 
     mapRef.value.setStyle(style)
-
-    mapRef.value.once('style.load', () => {
-      applyPoliticalLabels()
-      setupMapLayers()
-      syncRegionHighlightSource()
-      syncSelectionSource()
-    })
+    scheduleMapResize()
   } finally {
     finishMapLoading()
   }
@@ -832,7 +896,7 @@ onMounted(async () => {
   try {
     maplibregl = await import('maplibre-gl')
     await registerPmtilesProtocol(maplibregl)
-    const style = await fetchHostedMapStyle(getMapStyleUrl())
+    const style = await fetchInitialMapStyle()
 
     mapRef.value = new maplibregl.Map({
       container: mapEl.value,
@@ -840,6 +904,8 @@ onMounted(async () => {
       center: MAP_DEFAULT_CENTER,
       zoom: MAP_DEFAULT_ZOOM
     })
+    observeMapContainer()
+    scheduleMapResize()
   } catch {
     markMapIdle()
     finishMapLoading()
@@ -848,13 +914,19 @@ onMounted(async () => {
 
   finishMapLoading()
 
+  window.addEventListener('focus', refreshVisibleMapSource)
+  document.addEventListener('visibilitychange', refreshVisibleMapSource)
+
+  mapRef.value.on('style.load', () => {
+    syncMapRuntimeState()
+  })
+
+  mapRef.value.on('idle', () => {
+    scheduleMapResize()
+  })
+
   mapRef.value.on('load', () => {
-    applyPoliticalLabels()
-    setupMapLayers()
-    bindMapInteractions()
-    syncSelectionSource()
-    syncRegionHighlightSource()
-    fitPendingRegionBounds()
+    syncMapRuntimeState()
 
     if (props.selectedPostId) {
       void focusSelectedPost(props.selectedPostId)
@@ -902,6 +974,14 @@ onBeforeUnmount(() => {
   refreshSourceSequence += 1
   mapPostsAbortController?.abort()
   mapPostsAbortController = null
+  mapResizeObserver?.disconnect()
+  mapResizeObserver = null
+  if (mapResizeFrame !== null) {
+    window.cancelAnimationFrame(mapResizeFrame)
+    mapResizeFrame = null
+  }
+  window.removeEventListener('focus', refreshVisibleMapSource)
+  document.removeEventListener('visibilitychange', refreshVisibleMapSource)
   markMapIdle()
   mapRef.value?.remove()
 })

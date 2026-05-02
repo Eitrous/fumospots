@@ -77,9 +77,7 @@ const getMapBounds = (event: H3Event): MapBounds => {
   return bounds
 }
 
-const toCacheKeyPart = (value: number) => value.toFixed(2)
-
-const cachedMapPostsHandler = defineCachedEventHandler(async (event) => {
+const fetchMapPosts = async (event: H3Event) => {
   const { west, south, east, north } = getMapBounds(event)
 
   const supabase = createPublicServerClient(event)
@@ -96,7 +94,7 @@ const cachedMapPostsHandler = defineCachedEventHandler(async (event) => {
     .gte('public_lat', south)
     .lte('public_lat', north)
     .order('created_at', { ascending: false })
-    .limit(400)
+    .limit(1000)
 
   if (east < west) {
     query = query.or(`public_lng.gte.${west},public_lng.lte.${east}`)
@@ -130,28 +128,15 @@ const cachedMapPostsHandler = defineCachedEventHandler(async (event) => {
     type: 'FeatureCollection',
     features
   } satisfies PublicMapPointCollection
-}, {
-  maxAge: 30,
-  staleMaxAge: 120,
-  swr: true,
-  getKey: (event) => {
-    const { west, south, east, north } = getMapBounds(event)
-    return [
-      toCacheKeyPart(west),
-      toCacheKeyPart(south),
-      toCacheKeyPart(east),
-      toCacheKeyPart(north)
-    ].join(':')
-  }
-})
+}
 
 export default defineEventHandler(async (event) => {
   getMapBounds(event)
   await enforceRateLimit(event, 'mapIp', getRateLimitIdentifier(event))
 
-  const response = await cachedMapPostsHandler(event)
+  const response = await fetchMapPosts(event)
 
-  setHeader(event, 'Cache-Control', 'public, max-age=30, stale-while-revalidate=120')
+  setHeader(event, 'Cache-Control', 'no-store')
 
   return response
 })
