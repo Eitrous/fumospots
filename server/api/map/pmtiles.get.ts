@@ -1,4 +1,4 @@
-import { getRequestHeader, sendWebResponse } from 'h3'
+import { getRequestHeader, sendRedirect, setHeader } from 'h3'
 
 const RANGE_PATTERN = /^bytes=\d+-\d*$/
 
@@ -21,27 +21,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const upstream = await fetch(pmtilesUrl, {
-    headers: {
-      Range: range
-    }
-  })
+  setHeader(event, 'Cache-Control', 'public, max-age=86400')
 
-  if (upstream.status !== 206) {
-    throw createError({
-      statusCode: upstream.status || 502,
-      statusMessage: `PMTiles upstream returned ${upstream.status || 'an invalid response'}`
-    })
-  }
-
-  const headers = new Headers(upstream.headers)
-  headers.set('Accept-Ranges', 'bytes')
-  headers.set('Cache-Control', upstream.headers.get('cache-control') || 'public, max-age=31536000, immutable')
-  headers.set('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream')
-
-  return sendWebResponse(event, new Response(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers
-  }))
+  return sendRedirect(event, pmtilesUrl, 307)
 })

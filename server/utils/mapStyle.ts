@@ -4,7 +4,6 @@ import type { MapStyleTheme } from '~~/shared/mapStyle'
 import { normalizeMapStyleLanguage } from '~~/shared/mapStyle'
 
 const MAP_ASSET_BASE_PATH = '/map-assets'
-const MAP_PMTILES_PROXY_PATH = '/api/map/pmtiles'
 const MAP_SOURCE_NAME = 'protomaps'
 const MAP_ATTRIBUTION =
   '<a href="https://github.com/protomaps/basemaps">Protomaps</a> &copy; <a href="https://osm.org/copyright">OpenStreetMap</a>'
@@ -76,6 +75,10 @@ const toAbsoluteMapAssetUrl = (origin: string, path: string) => {
   return `${origin}${normalizedPath}`
 }
 
+const toPmtilesProtocolUrl = (pmtilesUrl: string) => {
+  return `pmtiles://${pmtilesUrl}`
+}
+
 const applyBuildingLayerOverrides = (styleLayers: MapStyleLayer[]) => {
   return styleLayers.map((layer) => {
     if (layer.id !== 'buildings' || layer.type !== 'fill') {
@@ -145,7 +148,7 @@ export const buildHostedMapStyle = (
     sources: {
       [MAP_SOURCE_NAME]: {
         type: 'vector',
-        url: `pmtiles://${MAP_PMTILES_PROXY_PATH}`,
+        url: toPmtilesProtocolUrl(pmtilesUrl),
         attribution: MAP_ATTRIBUTION
       }
     },
