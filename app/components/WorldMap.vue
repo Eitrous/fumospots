@@ -52,8 +52,7 @@ useMapResourceHints()
 const mapEl = ref<HTMLDivElement | null>(null)
 const mapRef = shallowRef<MapLibreMap | null>(null)
 const mapLoadingRequests = ref(0)
-const isMapIdle = ref(false)
-const isMapLoading = computed(() => mapLoadingRequests.value > 0 || !isMapIdle.value)
+const isMapLoading = computed(() => mapLoadingRequests.value > 0)
 const taiwanProvinceLabel = computed(() => t('map.taiwanProvinceLabel'))
 const collection = shallowRef<PublicMapPointCollection>({
   type: 'FeatureCollection',
@@ -267,14 +266,6 @@ const startMapLoading = () => {
 
 const finishMapLoading = () => {
   mapLoadingRequests.value = Math.max(0, mapLoadingRequests.value - 1)
-}
-
-const markMapBusy = () => {
-  isMapIdle.value = false
-}
-
-const markMapIdle = () => {
-  isMapIdle.value = true
 }
 
 const getFeaturePostId = (raw: Record<string, unknown> | null | undefined) => {
@@ -711,14 +702,6 @@ const bindMapInteractions = () => {
 
   mapInteractionsBound = true
 
-  mapRef.value.on('idle', () => {
-    markMapIdle()
-  })
-
-  mapRef.value.on('movestart', () => {
-    markMapBusy()
-  })
-
   mapRef.value.on('mouseenter', 'clusters', () => {
     mapRef.value?.getCanvas().style.setProperty('cursor', 'pointer')
   })
@@ -787,7 +770,6 @@ const scheduleInitialSourceLoad = () => {
   }
 
   initialSourceLoadScheduled = true
-  markMapBusy()
   startMapLoading()
 
   window.requestAnimationFrame(() => {
@@ -888,7 +870,6 @@ watch([isDark, locale], async ([dark]) => {
   }
 
   const currentSequence = ++mapStyleSequence
-  markMapBusy()
   startMapLoading()
   try {
     const style = await fetchHostedMapStyle(getMapStyleUrl(dark))
@@ -911,7 +892,6 @@ onMounted(async () => {
     return
   }
 
-  markMapBusy()
   startMapLoading()
   try {
     maplibregl = await import('maplibre-gl')
@@ -927,7 +907,6 @@ onMounted(async () => {
     observeMapContainer()
     scheduleMapResize()
   } catch {
-    markMapIdle()
     finishMapLoading()
     return
   }
@@ -1006,7 +985,6 @@ onBeforeUnmount(() => {
   }
   window.removeEventListener('focus', refreshVisibleMapSource)
   document.removeEventListener('visibilitychange', refreshVisibleMapSource)
-  markMapIdle()
   mapRef.value?.remove()
 })
 </script>

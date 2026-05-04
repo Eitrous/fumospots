@@ -1,0 +1,143 @@
+@font-face {
+  font-family: "Font Awesome 7 Free";
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: url("/fonts/fa-solid-900-subset.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Font Awesome 7 Free";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/fa-regular-400-subset.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Font Awesome 7 Brands";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url("/fonts/fa-brands-400-subset.woff2") format("woff2");
+}
+
+.fa,
+.fa-brands,
+.fa-regular,
+.fa-solid,
+.fab,
+.far,
+.fas {
+  --_fa-family: var(--fa-family, var(--fa-style-family, "Font Awesome 7 Free"));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  display: var(--fa-display, inline-block);
+  font-family: var(--_fa-family);
+  font-feature-settings: normal;
+  font-style: normal;
+  font-synthesis: none;
+  font-variant: normal;
+  font-weight: var(--fa-style, 900);
+  line-height: 1;
+  text-align: center;
+  text-rendering: auto;
+  width: var(--fa-width, 1.25em);
+}
+
+:is(.fas, .far, .fab, .fa-solid, .fa-regular, .fa-brands, .fa):before {
+  content: var(--fa) / "";
+}
+
+@supports not (content: "" / "") {
+  :is(.fas, .far, .fab, .fa-solid, .fa-regular, .fa-brands, .fa):before {
+    content: var(--fa);
+  }
+}
+
+.fa-solid,
+.fas {
+  --fa-family: "Font Awesome 7 Free";
+  --fa-style: 900;
+}
+
+.fa-regular,
+.far {
+  --fa-family: "Font Awesome 7 Free";
+  --fa-style: 400;
+}
+
+.fa-brands,
+.fab {
+  --fa-family: "Font Awesome 7 Brands";
+  --fa-style: 400;
+}
+
+.fa-spin {
+  animation-delay: var(--fa-animation-delay, 0s);
+  animation-direction: var(--fa-animation-direction, normal);
+  animation-duration: var(--fa-animation-duration, 2s);
+  animation-iteration-count: var(--fa-animation-iteration-count, infinite);
+  animation-name: fa-spin;
+  animation-timing-function: var(--fa-animation-timing, linear);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fa-spin {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@keyframes fa-spin {
+  0% {
+    transform: rotate(0);
+  }
+
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.fa-address-card { --fa: "\f2bb"; }
+.fa-arrow-left { --fa: "\f060"; }
+.fa-arrow-right { --fa: "\f061"; }
+.fa-arrow-up-right-from-square { --fa: "\f08e"; }
+.fa-camera { --fa: "\f030"; }
+.fa-check { --fa: "\f00c"; }
+.fa-chevron-left { --fa: "\f053"; }
+.fa-chevron-right { --fa: "\f054"; }
+.fa-circle-check { --fa: "\f058"; }
+.fa-circle-info { --fa: "\f05a"; }
+.fa-clock { --fa: "\f017"; }
+.fa-comment-dots { --fa: "\f4ad"; }
+.fa-crosshairs { --fa: "\f05b"; }
+.fa-envelope { --fa: "\f0e0"; }
+.fa-floppy-disk { --fa: "\f0c7"; }
+.fa-github { --fa: "\f09b"; }
+.fa-globe { --fa: "\f0ac"; }
+.fa-google { --fa: "\f1a0"; }
+.fa-heart { --fa: "\f004"; }
+.fa-id-card { --fa: "\f2c2"; }
+.fa-image { --fa: "\f03e"; }
+.fa-key { --fa: "\f084"; }
+.fa-location-dot { --fa: "\f3c5"; }
+.fa-magnifying-glass { --fa: "\f002"; }
+.fa-microsoft { --fa: "\f3ca"; }
+.fa-moon { --fa: "\f186"; }
+.fa-paper-plane { --fa: "\f1d8"; }
+.fa-pen-to-square { --fa: "\f044"; }
+.fa-plus { --fa: "\2b"; }
+.fa-quote-left { --fa: "\f10d"; }
+.fa-quote-right { --fa: "\f10e"; }
+.fa-right-from-bracket { --fa: "\f2f5"; }
+.fa-right-to-bracket { --fa: "\f2f6"; }
+.fa-rotate-right { --fa: "\f2f9"; }
+.fa-shield-halved { --fa: "\f3ed"; }
+.fa-spinner { --fa: "\f110"; }
+.fa-sun { --fa: "\f185"; }
+.fa-trash-can { --fa: "\f2ed"; }
+.fa-triangle-exclamation { --fa: "\f071"; }
+.fa-user { --fa: "\f007"; }
+.fa-user-plus { --fa: "\f234"; }
+.fa-xmark { --fa: "\f00d"; }
