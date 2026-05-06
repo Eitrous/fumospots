@@ -69,7 +69,7 @@
     "helper": "Pan or zoom to reload the current viewport, then click a marker to open details on the right.",
     "dataLoadFailed": "Failed to load map data.",
     "untitledPost": "Untitled post",
-    "taiwanProvinceLabel": "TAIWAN PROVINCE"
+    "taiwanProvinceLabel": "TAIWAN PROVINCE\n台湾省"
   },
   "auth": {
     "eyebrow": "",

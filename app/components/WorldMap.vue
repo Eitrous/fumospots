@@ -322,12 +322,15 @@ const fetchGeoJson = async (
 
 const fetchInitialMapStyle = async () => {
   const styleUrl = getMapStyleUrl()
+  const options = {
+    taiwanProvinceLabel: taiwanProvinceLabel.value
+  }
 
   try {
-    return await fetchHostedMapStyle(styleUrl)
+    return await fetchHostedMapStyle(styleUrl, options)
   } catch {
     await new Promise(resolve => window.setTimeout(resolve, 160))
-    return await fetchHostedMapStyle(styleUrl)
+    return await fetchHostedMapStyle(styleUrl, options)
   }
 }
 
@@ -872,7 +875,9 @@ watch([isDark, locale], async ([dark]) => {
   const currentSequence = ++mapStyleSequence
   startMapLoading()
   try {
-    const style = await fetchHostedMapStyle(getMapStyleUrl(dark))
+    const style = await fetchHostedMapStyle(getMapStyleUrl(dark), {
+      taiwanProvinceLabel: taiwanProvinceLabel.value
+    })
 
     if (currentSequence !== mapStyleSequence || !mapRef.value) {
       return

@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap } from 'maplibre-gl'
+import type { Map as MapLibreMap, StyleSpecification } from 'maplibre-gl'
 
 const TAIWAN_ISO_A2 = 'TW'
 const TAIWAN_WIKIDATA_ID = 'Q865'
@@ -26,6 +26,12 @@ const TAIWAN_EXCLUDE_FILTER: unknown[] = [
   ['!=', 'name:zh-Hant', TAIWAN_HANT_NAME],
   ['!=', 'name:ja', TAIWAN_HANS_NAME],
   ['!in', 'name', TAIWAN_ENGLISH_NAME, TAIWAN_HANS_NAME, TAIWAN_HANT_NAME]
+]
+const COUNTRY_PLACE_FILTER: unknown[] = [
+  'any',
+  ['==', 'class', 'country'],
+  ['==', 'kind', 'country'],
+  ['==', 'pmap:kind', 'country']
 ]
 const PLACE_SOURCE_LAYERS = ['place', 'places']
 
@@ -56,6 +62,14 @@ const warnOnce = (code: string, message: string) => {
 
 const isArray = (value: unknown): value is unknown[] => {
   return Array.isArray(value)
+}
+
+const cloneExpression = <T>(value: T): T => {
+  if (!isArray(value)) {
+    return value
+  }
+
+  return value.map((item) => cloneExpression(item)) as T
 }
 
 const isPropertyReference = (value: unknown, propertyNames: string[]) => {
@@ -198,7 +212,8 @@ const usesPlaceSourceLayer = (layer: RawStyleLayer) => {
 
 const findCountryLabelLayers = (layers: RawStyleLayer[]) => {
   return layers.filter((layer) => {
-    return layer.type === 'symbol'
+    return layer.id !== TAIWAN_PROVINCE_LAYER_ID
+      && layer.type === 'symbol'
       && usesPlaceSourceLayer(layer)
       && (
         includesPlacePropertyValue(layer.filter, ['class'], ['country'])
@@ -272,9 +287,11 @@ const createTaiwanProvinceLayer = (
     'source-layer': sourceLayer,
     minzoom: stateLayer?.minzoom ?? 5,
     maxzoom: stateLayer?.maxzoom ?? 10,
-    filter: countryLayer.filter
-      ? ['all', countryLayer.filter, TAIWAN_COUNTRY_MATCH_FILTER]
-      : TAIWAN_COUNTRY_MATCH_FILTER,
+    filter: [
+      'all',
+      cloneExpression(COUNTRY_PLACE_FILTER),
+      cloneExpression(TAIWAN_COUNTRY_MATCH_FILTER)
+    ],
     layout: {
       ...baseLayout,
       'text-field': label,
@@ -284,6 +301,65 @@ const createTaiwanProvinceLayer = (
       ...basePaint
     }
   }
+}
+
+const applyCountryLayerFiltersToStyle = (countryLayers: RawStyleLayer[]) => {
+  for (const layer of countryLayers) {
+    layer.filter = withTaiwanExcluded(layer.filter)
+  }
+}
+
+const insertTaiwanProvinceLayerIntoStyle = (
+  styleLayers: RawStyleLayer[],
+  targetLayer: RawStyleLayer,
+  beforeLayerId: string | undefined
+) => {
+  const existingIndex = styleLayers.findIndex((layer) => layer.id === TAIWAN_PROVINCE_LAYER_ID)
+
+  if (existingIndex >= 0) {
+    styleLayers[existingIndex] = targetLayer
+    return
+  }
+
+  const beforeIndex = beforeLayerId
+    ? styleLayers.findIndex((layer) => layer.id === beforeLayerId)
+    : -1
+
+  if (beforeIndex >= 0) {
+    styleLayers.splice(beforeIndex, 0, targetLayer)
+    return
+  }
+
+  styleLayers.push(targetLayer)
+}
+
+export const applyTaiwanProvinceLabelPolicyToStyle = (
+  style: StyleSpecification,
+  label: string
+) => {
+  const styleLayers = (style.layers || []) as RawStyleLayer[]
+  if (!styleLayers.length) {
+    return style
+  }
+
+  const countryLayers = findCountryLabelLayers(styleLayers)
+  if (!countryLayers.length) {
+    warnOnce('style-country-layers-missing', '[map political labels] Country label layers not found in fetched style')
+    return style
+  }
+
+  const stateLayer = findStateLabelLayer(styleLayers)
+  const targetLayer = createTaiwanProvinceLayer(countryLayers[0], stateLayer, label)
+
+  applyCountryLayerFiltersToStyle(countryLayers)
+
+  if (!targetLayer) {
+    warnOnce('style-taiwan-layer-source-missing', '[map political labels] Cannot create Taiwan layer due to missing source metadata')
+    return style
+  }
+
+  insertTaiwanProvinceLayerIntoStyle(styleLayers, targetLayer, stateLayer?.id)
+  return style
 }
 
 export const updateTaiwanProvinceLabel = (map: MapLibreMap, label: string) => {

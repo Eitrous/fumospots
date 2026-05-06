@@ -69,7 +69,7 @@
     "helper": "拖拽或缩放地图会按当前视野重新加载内容，点击图钉可在右侧查看详情。",
     "dataLoadFailed": "地图数据加载失败。",
     "untitledPost": "未命名投稿",
-    "taiwanProvinceLabel": "TAIWAN PROVINCE"
+    "taiwanProvinceLabel": "台湾省"
   },
   "auth": {
     "eyebrow": "",

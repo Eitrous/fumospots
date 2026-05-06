@@ -177,7 +177,9 @@ watch([isDark, locale], async ([dark]) => {
   }
 
   const currentSequence = ++mapStyleSequence
-  const style = await fetchHostedMapStyle(getMapStyleUrl(dark))
+  const style = await fetchHostedMapStyle(getMapStyleUrl(dark), {
+    taiwanProvinceLabel: taiwanProvinceLabel.value
+  })
 
   if (currentSequence !== mapStyleSequence || !mapRef.value) {
     return
@@ -205,7 +207,9 @@ const initializeMap = async () => {
   mapInitPromise = (async () => {
     maplibregl = maplibregl || await import('maplibre-gl')
     await registerPmtilesProtocol(maplibregl)
-    const style = await fetchHostedMapStyle(getMapStyleUrl())
+    const style = await fetchHostedMapStyle(getMapStyleUrl(), {
+      taiwanProvinceLabel: taiwanProvinceLabel.value
+    })
 
     mapRef.value = new maplibregl.Map({
       container: mapEl.value as HTMLDivElement,
