@@ -2,12 +2,14 @@
   "common": {
     "brand": "Fumo Spots",
     "brandTagline": "Map workbench",
+    "home": "Home",
     "authorIdUnset": "Author ID not set",
     "login": "Log in",
     "submit": "Submit",
     "signOut": "Sign out",
     "review": "Review desk",
     "language": "Language",
+    "back": "Back",
     "close": "Close",
     "closePanel": "Close panel",
     "openPanel": "Open panel",
@@ -168,6 +170,7 @@
     "preview": "Public location preview",
     "previousPhoto": "Previous photo",
     "nextPhoto": "Next photo",
+    "randomPost": "Random post",
     "openPhotoViewer": "Zoom photo",
     "closePhotoViewer": "Close photo viewer",
     "like": "Like",
@@ -181,6 +184,8 @@
     "unavailableDescription": "It may still be under review, or the link may no longer be valid.",
     "errors": {
       "loadFailed": "Failed to load post details.",
+      "noRandomPost": "There are no other posts to browse right now.",
+      "randomFailed": "Failed to load a random post. Please try again.",
       "loginToLike": "Log in to like this post.",
       "likeFailed": "Failed to update like. Please try again."
     }

@@ -94,7 +94,7 @@ const fetchMapPosts = async (event: H3Event) => {
     .gte('public_lat', south)
     .lte('public_lat', north)
     .order('created_at', { ascending: false })
-    .limit(1000)
+    .limit(2000)
 
   if (east < west) {
     query = query.or(`public_lng.gte.${west},public_lng.lte.${east}`)

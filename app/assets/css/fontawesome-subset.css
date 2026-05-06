@@ -118,6 +118,7 @@
 .fa-globe { --fa: "\f0ac"; }
 .fa-google { --fa: "\f1a0"; }
 .fa-heart { --fa: "\f004"; }
+.fa-house { --fa: "\f015"; }
 .fa-id-card { --fa: "\f2c2"; }
 .fa-image { --fa: "\f03e"; }
 .fa-key { --fa: "\f084"; }
@@ -133,6 +134,7 @@
 .fa-right-from-bracket { --fa: "\f2f5"; }
 .fa-right-to-bracket { --fa: "\f2f6"; }
 .fa-rotate-right { --fa: "\f2f9"; }
+.fa-shuffle { --fa: "\f074"; }
 .fa-shield-halved { --fa: "\f3ed"; }
 .fa-spinner { --fa: "\f110"; }
 .fa-sun { --fa: "\f185"; }

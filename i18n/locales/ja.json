@@ -2,12 +2,14 @@
   "common": {
     "brand": "Fumo Spots",
     "brandTagline": "マップワークスペース",
+    "home": "ホーム",
     "authorIdUnset": "作者 ID 未設定",
     "login": "ログイン",
     "submit": "投稿",
     "signOut": "ログアウト",
     "review": "審査デスク",
     "language": "言語",
+    "back": "戻る",
     "close": "閉じる",
     "closePanel": "パネルを閉じる",
     "openPanel": "パネルを開く",
@@ -168,6 +170,7 @@
     "preview": "公開位置プレビュー",
     "previousPhoto": "前の写真",
     "nextPhoto": "次の写真",
+    "randomPost": "ランダム投稿",
     "openPhotoViewer": "写真を拡大表示",
     "closePhotoViewer": "写真表示を閉じる",
     "like": "いいね",
@@ -181,6 +184,8 @@
     "unavailableDescription": "まだ審査中か、リンクが無効になっている可能性があります。",
     "errors": {
       "loadFailed": "投稿詳細の読み込みに失敗しました。",
+      "noRandomPost": "現在、ほかにランダム表示できる投稿はありません。",
+      "randomFailed": "ランダム投稿の読み込みに失敗しました。しばらくしてからもう一度お試しください。",
       "loginToLike": "いいねするにはログインしてください。",
       "likeFailed": "いいねの更新に失敗しました。しばらくしてからもう一度お試しください。"
     }

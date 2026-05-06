@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { WorkbenchPanel } from '~~/shared/fumo'
+import type { RandomPostResponse, WorkbenchPanel } from '~~/shared/fumo'
 
 type MobileDrawerState = 'peek' | 'workbench' | 'detail'
 type WorkbenchNotice = {
@@ -35,6 +35,7 @@ const mobileDrawerPeeking = computed(() => isMobile.value && mobileDrawerState.v
 const clientToolbarReady = ref(false)
 const workbenchNotice = ref<WorkbenchNotice | null>(null)
 const workbenchNoticeOpen = computed(() => Boolean(workbenchNotice.value))
+const randomPostLoading = ref(false)
 
 let viewportQuery: MediaQueryList | null = null
 let mobileDrawerPointerId: number | null = null
@@ -274,6 +275,70 @@ async function openSubmitPanel() {
   }
 
   await openPanel('submit')
+}
+
+const getFetchStatusCode = (error: unknown) => {
+  if (!error || typeof error !== 'object') {
+    return null
+  }
+
+  const directStatus = Number((error as { statusCode?: unknown }).statusCode)
+  if (Number.isInteger(directStatus)) {
+    return directStatus
+  }
+
+  const responseStatus = Number((error as { response?: { status?: unknown } }).response?.status)
+  return Number.isInteger(responseStatus) ? responseStatus : null
+}
+
+async function openRandomPost() {
+  const currentPostId = selectedPostId.value
+
+  if (randomPostLoading.value) {
+    return
+  }
+
+  randomPostLoading.value = true
+
+  try {
+    const response = await $fetch<RandomPostResponse>('/api/posts/random', {
+      query: currentPostId
+        ? {
+            exclude: currentPostId
+          }
+        : undefined
+    })
+    const targetPostId = Number(response.id)
+
+    if (
+      !Number.isInteger(targetPostId)
+      || targetPostId <= 0
+      || (currentPostId && targetPostId === currentPostId)
+    ) {
+      openWorkbenchNotice({
+        message: t('post.errors.randomFailed'),
+        icon: 'fa-triangle-exclamation'
+      })
+      return
+    }
+
+    prefetchPostDetail(targetPostId)
+
+    await openPanel('post', {
+      postId: targetPostId
+    })
+  } catch (error) {
+    const statusCode = getFetchStatusCode(error)
+
+    openWorkbenchNotice({
+      message: statusCode === 404
+        ? t('post.errors.noRandomPost')
+        : normalizeApiErrorMessage(error, t('post.errors.randomFailed')),
+      icon: statusCode === 404 ? 'fa-circle-info' : 'fa-triangle-exclamation'
+    })
+  } finally {
+    randomPostLoading.value = false
+  }
 }
 
 async function openSuggestionPage() {
@@ -637,33 +702,51 @@ onBeforeUnmount(() => {
                 draggable="false"
               >
             </div>
-            <button
+            <div
               v-else-if="isDetailPanel"
-              class="workbench-brand workbench-brand--exit"
-              type="button"
-              :title="t('post.exitDetail')"
-              :aria-label="t('post.exitDetail')"
-              @click="goBackPanel"
+              class="workbench-detail-nav"
             >
-              <i class="button-icon fa-solid fa-arrow-left" aria-hidden="true" />
-              <span class="sr-only">{{ t('post.exitDetail') }}</span>
-            </button>
+              <button
+                class="workbench-brand workbench-brand--exit"
+                type="button"
+                :title="t('post.exitDetail')"
+                :aria-label="t('post.exitDetail')"
+                @click="goBackPanel"
+              >
+                <i class="button-icon fa-solid fa-arrow-left" aria-hidden="true" />
+                <span class="sr-only">{{ t('post.exitDetail') }}</span>
+              </button>
+
+              <button
+                class="workbench-icon-button workbench-detail-nav__home"
+                type="button"
+                :title="t('common.home')"
+                :aria-label="t('common.home')"
+                @click="openInfoPanel"
+              >
+                <i class="button-icon fa-solid fa-house" aria-hidden="true" />
+                <span class="sr-only">{{ t('common.home') }}</span>
+              </button>
+            </div>
 
             <div
               class="workbench-tools"
             >
               <button
-                class="workbench-icon-button"
+                class="workbench-icon-button workbench-tools__random"
                 type="button"
-                :title="isDark ? t('common.toggleThemeToLight') : t('common.toggleThemeToDark')"
-                :aria-label="isDark ? t('common.toggleThemeToLight') : t('common.toggleThemeToDark')"
-                @click="toggleTheme"
+                :title="t('post.randomPost')"
+                :aria-label="t('post.randomPost')"
+                :disabled="randomPostLoading"
+                @click="openRandomPost"
               >
-                <i class="button-icon fa-solid" :class="isDark ? 'fa-sun' : 'fa-moon'" aria-hidden="true" />
-                <span class="sr-only">{{ isDark ? t('common.toggleThemeToLight') : t('common.toggleThemeToDark') }}</span>
+                <i
+                  class="button-icon fa-solid"
+                  :class="randomPostLoading ? 'fa-spinner fa-spin' : 'fa-shuffle'"
+                  aria-hidden="true"
+                />
+                <span class="sr-only">{{ t('post.randomPost') }}</span>
               </button>
-
-              <LocaleSwitcher @menu-open="revealMobileDrawerForMenu" />
 
               <UserMenu
                 v-if="clientToolbarReady && auth.ready.value"
@@ -671,9 +754,11 @@ onBeforeUnmount(() => {
                 :signed-in="Boolean(auth.viewer.value)"
                 :label="viewerHandle"
                 :username="auth.viewer.value?.profile.username"
+                :is-dark="isDark"
                 @login="openLoginPanel()"
                 @menu-open="revealMobileDrawerForMenu"
                 @sign-out="handleSignOut"
+                @toggle-theme="toggleTheme"
               />
 
               <NuxtLink

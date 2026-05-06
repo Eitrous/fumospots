@@ -82,6 +82,10 @@ export type PublicPostDetail = {
   }
 }
 
+export type RandomPostResponse = {
+  id: number
+}
+
 export type AdminReviewPost = {
   reviewKey: string
   reviewKind: AdminReviewItemKind

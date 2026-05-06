@@ -1814,6 +1814,22 @@ html[data-theme="dark"] .workbench-map-shell {
   margin: 0 calc(var(--workbench-sidebar-inline-pad) * -1) 0 0;
 }
 
+.workbench-detail-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 0.08rem;
+}
+
+.workbench-detail-nav__home {
+  flex: 0 0 auto;
+}
+
+.workbench-detail-nav__home .button-icon {
+  width: auto;
+  font-size: 0.98rem;
+}
+
 .workbench-brand {
   display: grid;
   min-width: 0;
@@ -1821,7 +1837,7 @@ html[data-theme="dark"] .workbench-map-shell {
 
 .workbench-brand__image {
   display: block;
-  width: min(15.5rem, 100%);
+  width: min(11.75rem, 100%);
   height: auto;
   user-select: none;
 }
@@ -3341,7 +3357,7 @@ html[data-theme="dark"] .locale-switcher__menu {
 }
 
 .user-menu__menu {
-  min-width: 10.5rem;
+  min-width: 12rem;
 }
 
 .user-menu__identity {
@@ -3359,6 +3375,44 @@ html[data-theme="dark"] .user-menu__identity {
 .user-menu__link {
   color: inherit;
   text-decoration: none;
+}
+
+.user-menu__option-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.48rem;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
+.locale-switcher__option:hover .user-menu__option-meta,
+.locale-switcher__option:focus-visible .user-menu__option-meta {
+  color: var(--ink-soft);
+}
+
+.user-menu__submenu-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.25rem;
+  padding: 0 0.2rem 0.35rem;
+  border-bottom: 1px solid rgba(29, 23, 18, 0.08);
+}
+
+html[data-theme="dark"] .user-menu__submenu-head {
+  border-bottom-color: var(--border);
+}
+
+.user-menu__submenu-back {
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 2.1rem;
+}
+
+.user-menu__submenu-title {
+  color: var(--ink-muted);
+  font-size: 0.84rem;
+  font-weight: 600;
 }
 
 .locale-menu-enter-active,
@@ -3590,6 +3644,7 @@ html[data-theme="dark"] .user-menu__identity {
     --workbench-sidebar-inline-pad: 0.9rem;
     padding-inline: 0;
     padding-top: 0.7rem;
+    padding-bottom: 0;
     border-radius: 26px 26px 0 0;
   }
 
@@ -3599,6 +3654,10 @@ html[data-theme="dark"] .user-menu__identity {
 
   .workbench-brand__word--bottom {
     font-size: clamp(2.7rem, 13vw, 3.6rem);
+  }
+
+  .workbench-brand__image {
+    width: min(9.75rem, 46vw);
   }
 
   .workbench-tools {

@@ -71,6 +71,11 @@ const EXPANDED_VIEWPORT_FACTOR = 2
 const MIN_LATITUDE = -90
 const MAX_LATITUDE = 90
 const SELECTED_POST_FOCUS_MIN_ZOOM = 6.8
+const SELECTED_POST_FOCUS_OVERVIEW_ZOOM = 4.2
+const SELECTED_POST_FOCUS_DURATION_MS = 1040
+const SELECTED_POST_FAR_FOCUS_DURATION_MS = 1450
+const SELECTED_POST_FAR_DISTANCE_DEGREES = 26
+const LOW_ZOOM_PMTILES_CACHE_MAX_ZOOM = 4
 const REGION_FIT_MAX_ZOOM = 10
 const REGION_FIT_DURATION_MS = 720
 
@@ -86,6 +91,7 @@ let mapPostsAbortController: AbortController | null = null
 let mapResizeObserver: ResizeObserver | null = null
 let mapResizeFrame: number | null = null
 let mapRuntimeSyncFrame: number | null = null
+let lowZoomWarmupAbortController: AbortController | null = null
 let pendingStyleSourceRefresh = false
 
 const getMapStyleUrl = (dark = isDark.value) => {
@@ -120,6 +126,10 @@ const clampLongitude = (lng: number) => Math.min(180, Math.max(-180, lng))
 
 const normalizeLongitude = (lng: number) => {
   return ((((lng + 180) % 360) + 360) % 360) - 180
+}
+
+const getWrappedLongitudeDelta = (from: number, to: number) => {
+  return Math.abs(normalizeLongitude(to - from))
 }
 
 const normalizeScopeValue = (value: string | null) => value?.trim().toLowerCase() || ''
@@ -370,10 +380,26 @@ const focusSelectedPost = async (postId: number) => {
     return
   }
 
-  mapRef.value.easeTo({
+  const currentZoom = mapRef.value.getZoom()
+  const currentCenter = mapRef.value.getCenter()
+  const targetZoom = Math.max(currentZoom, SELECTED_POST_FOCUS_MIN_ZOOM)
+  const distanceDegrees = Math.max(
+    getWrappedLongitudeDelta(currentCenter.lng, coordinates[0]),
+    Math.abs(currentCenter.lat - coordinates[1])
+  )
+  const shouldUseOverviewFlight = (
+    distanceDegrees >= SELECTED_POST_FAR_DISTANCE_DEGREES
+    && Math.min(currentZoom, targetZoom) > SELECTED_POST_FOCUS_OVERVIEW_ZOOM
+  )
+
+  mapRef.value.flyTo({
     center: coordinates,
-    zoom: Math.max(mapRef.value.getZoom(), SELECTED_POST_FOCUS_MIN_ZOOM),
-    duration: 680
+    zoom: targetZoom,
+    duration: shouldUseOverviewFlight
+      ? SELECTED_POST_FAR_FOCUS_DURATION_MS
+      : SELECTED_POST_FOCUS_DURATION_MS,
+    essential: true,
+    ...(shouldUseOverviewFlight ? { minZoom: SELECTED_POST_FOCUS_OVERVIEW_ZOOM } : {})
   })
 }
 
@@ -782,6 +808,33 @@ const scheduleInitialSourceLoad = () => {
   })
 }
 
+const scheduleLowZoomMapWarmup = () => {
+  if (!import.meta.client || lowZoomWarmupAbortController) {
+    return
+  }
+
+  const pmtilesUrl = String(config.public.pmtilesUrl || '').trim()
+  if (!pmtilesUrl) {
+    return
+  }
+
+  const abortController = new AbortController()
+  lowZoomWarmupAbortController = abortController
+
+  void warmLowZoomPmtilesCache(pmtilesUrl, {
+    maxZoom: LOW_ZOOM_PMTILES_CACHE_MAX_ZOOM,
+    signal: abortController.signal
+  })
+    .catch(() => {
+      // The map still works with normal on-demand PMTiles loading if warmup fails.
+    })
+    .finally(() => {
+      if (lowZoomWarmupAbortController === abortController) {
+        lowZoomWarmupAbortController = null
+      }
+    })
+}
+
 const loadRegionHighlight = async (scope: RegionScope | null) => {
   const currentSequence = ++regionHighlightSequence
   const scopeKey = getRegionScopeKey(scope)
@@ -907,7 +960,8 @@ onMounted(async () => {
       container: mapEl.value,
       style,
       center: MAP_DEFAULT_CENTER,
-      zoom: MAP_DEFAULT_ZOOM
+      zoom: MAP_DEFAULT_ZOOM,
+      cancelPendingTileRequestsWhileZooming: false
     })
     observeMapContainer()
     scheduleMapResize()
@@ -931,12 +985,12 @@ onMounted(async () => {
 
   mapRef.value.on('load', () => {
     scheduleMapRuntimeSync()
+    scheduleInitialSourceLoad()
+    scheduleLowZoomMapWarmup()
 
     if (props.selectedPostId) {
       void focusSelectedPost(props.selectedPostId)
     }
-
-    scheduleInitialSourceLoad()
   })
 })
 
@@ -978,6 +1032,8 @@ onBeforeUnmount(() => {
   refreshSourceSequence += 1
   mapPostsAbortController?.abort()
   mapPostsAbortController = null
+  lowZoomWarmupAbortController?.abort()
+  lowZoomWarmupAbortController = null
   mapResizeObserver?.disconnect()
   mapResizeObserver = null
   if (mapResizeFrame !== null) {
