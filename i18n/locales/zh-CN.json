@@ -45,6 +45,11 @@
     "posterShareLead": "也可以",
     "posterShare": "分享你自己的作品",
     "posterClosing": "期待你的投稿。",
+    "stats": {
+      "publicPosts": "投稿",
+      "registeredUsers": "贡献者",
+      "loadFailed": "统计加载失败"
+    },
     "actions": {
       "login": "登录",
       "submit": "开始投稿",

@@ -45,6 +45,11 @@
     "posterShareLead": "あるいは",
     "posterShare": "自分の一枚を共有する",
     "posterClosing": "次の投稿を待っています。",
+    "stats": {
+      "publicPosts": "投稿",
+      "registeredUsers": "貢献者",
+      "loadFailed": "統計の読み込みに失敗しました"
+    },
     "actions": {
       "login": "ログイン",
       "submit": "投稿を始める",

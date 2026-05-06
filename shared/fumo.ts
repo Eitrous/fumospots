@@ -86,6 +86,11 @@ export type RandomPostResponse = {
   id: number
 }
 
+export type PublicMapCountResponse = {
+  count: number
+  registeredUserCount: number
+}
+
 export type AdminReviewPost = {
   reviewKey: string
   reviewKind: AdminReviewItemKind

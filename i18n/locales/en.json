@@ -45,6 +45,11 @@
     "posterShareLead": "You can also",
     "posterShare": "share your own work",
     "posterClosing": "Looking forward to your post.",
+    "stats": {
+      "publicPosts": "Posts",
+      "registeredUsers": "Contributors",
+      "loadFailed": "Failed to load stats"
+    },
     "actions": {
       "login": "Log in",
       "submit": "Start a post",

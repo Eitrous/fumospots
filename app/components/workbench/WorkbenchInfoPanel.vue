@@ -1,9 +1,43 @@
 <script setup lang="ts">
-const { t } = useI18n()
+import type { PublicMapCountResponse } from '~~/shared/fumo'
+
+const { locale, t } = useI18n()
+const {
+  data: mapCount,
+  pending: mapCountPending,
+  error: mapCountError
+} = await useFetch<PublicMapCountResponse>('/api/map/count', {
+  key: 'home-post-count'
+})
 
 const emit = defineEmits<{
   openFeedback: []
 }>()
+
+const publicPostCount = computed(() => Math.max(0, Number(mapCount.value?.count ?? 0)))
+const registeredUserCount = computed(() => Math.max(0, Number(mapCount.value?.registeredUserCount ?? 0)))
+const formatStatCount = (value: number) => {
+  if (mapCountPending.value || mapCountError.value) {
+    return '--'
+  }
+
+  return new Intl.NumberFormat(locale.value).format(value)
+}
+const formattedPublicPostCount = computed(() => formatStatCount(publicPostCount.value))
+const formattedRegisteredUserCount = computed(() => formatStatCount(registeredUserCount.value))
+
+const homeStats = computed(() => [
+  {
+    key: 'posts',
+    label: t('workbench.stats.publicPosts'),
+    value: formattedPublicPostCount.value
+  },
+  {
+    key: 'users',
+    label: t('workbench.stats.registeredUsers'),
+    value: formattedRegisteredUserCount.value
+  }
+])
 
 const openFeedback = () => {
   emit('openFeedback')
@@ -11,23 +45,30 @@ const openFeedback = () => {
 </script>
 
 <template>
-  <section class="workbench-panel workbench-panel--home workbench-panel--home-quote">
-    <p class="workbench-home-quote__lead">And God said,</p>
-
-    <i
-      class="workbench-home-quote__mark workbench-home-quote__mark--left fa-solid fa-quote-left"
-      aria-hidden="true"
-    />
-
-    <h2 class="workbench-home-quote__title">Let there be Fumo</h2>
-
-    <i
-      class="workbench-home-quote__mark workbench-home-quote__mark--right fa-solid fa-quote-right"
-      aria-hidden="true"
-    />
+  <section class="workbench-panel workbench-panel--home workbench-panel--home-stats">
+    <div class="workbench-home-stats" aria-live="polite">
+      <div
+        v-for="metric in homeStats"
+        :key="metric.key"
+        class="workbench-home-stats__item"
+      >
+        <strong
+          class="workbench-home-stats__value"
+          :aria-label="`${metric.value} ${metric.label}`"
+        >
+          <span aria-hidden="true">{{ metric.value }}</span>
+        </strong>
+        <p class="workbench-home-stats__label">
+          {{ metric.label }}
+        </p>
+      </div>
+      <p v-if="mapCountError" class="workbench-home-stats__status">
+        {{ t('workbench.stats.loadFailed') }}
+      </p>
+    </div>
 
     <a
-      class="workbench-home-quote__blog-link"
+      class="workbench-home-stats__blog-link"
       href="https://blog.0x-3f.com/2026/04/12/fumospots_manual/"
       target="_blank"
       rel="noopener noreferrer"
@@ -39,7 +80,7 @@ const openFeedback = () => {
     </a>
 
     <button
-      class="workbench-home-quote__feedback-link"
+      class="workbench-home-stats__feedback-link"
       type="button"
       :title="t('suggestions.quickAction')"
       :aria-label="t('suggestions.quickAction')"
