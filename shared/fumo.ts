@@ -277,10 +277,10 @@ export const MAP_DARK_STYLE_URL =
   '/api/map/style/dark'
 export const MAP_DEFAULT_CENTER: [number, number] = [116.397389, 39.908722]
 export const MAP_DEFAULT_ZOOM = 1.55
-export const MAP_FETCH_BOUNDS_GRID_SIZE = 0.25
 export const MAX_TITLE_LENGTH = 80
 export const MAX_BODY_LENGTH = 1000
 export const MAX_SUGGESTION_LENGTH = 2000
 export const MAX_POST_PHOTOS = 10
+export const MAX_PHOTO_UPLOAD_BYTES = 25 * 1024 * 1024
 export const MIN_PASSWORD_LENGTH = 8
 export const USERNAME_PATTERN = /^[a-zA-Z0-9_-]{3,24}$/

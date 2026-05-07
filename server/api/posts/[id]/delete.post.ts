@@ -1,6 +1,6 @@
 import { getRouterParam } from 'h3'
-import { isOwnedStoragePath } from '~~/server/utils/posts'
 import { createAdminServerClient, requireAuthenticatedUser } from '~~/server/utils/supabase'
+import { isOwnedStoragePath } from '~~/server/utils/storagePath'
 import { deleteStorageObjects } from '~~/server/utils/storage'
 
 type PostRow = {

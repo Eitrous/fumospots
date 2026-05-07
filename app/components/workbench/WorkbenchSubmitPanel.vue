@@ -7,7 +7,7 @@ import type {
   PrivacyMode,
   SubmitPostPayload
 } from '~~/shared/fumo'
-import { MAX_POST_PHOTOS } from '~~/shared/fumo'
+import { MAX_PHOTO_UPLOAD_BYTES, MAX_POST_PHOTOS } from '~~/shared/fumo'
 import { normalizeApiErrorMessage } from '~~/app/composables/normalizeApiErrorMessage'
 
 type SelectedPhoto = {
@@ -29,7 +29,24 @@ type SignedUploadTarget = {
   method: 'PUT'
   uploadUrl: string
   contentType: string
+  headers: Record<string, string>
+  size: number
 }
+
+const ALLOWED_PHOTO_UPLOAD_TYPES = new Set([
+  'image/avif',
+  'image/gif',
+  'image/jpeg',
+  'image/png',
+  'image/webp'
+])
+const PHOTO_UPLOAD_EXTENSION_BY_TYPE = new Map([
+  ['image/avif', 'avif'],
+  ['image/gif', 'gif'],
+  ['image/jpeg', 'jpg'],
+  ['image/png', 'png'],
+  ['image/webp', 'webp']
+])
 
 const props = withDefaults(defineProps<{
   mode?: 'create' | 'edit'
@@ -162,6 +179,24 @@ const getAdaptiveWebpQuality = (bytes: number) => {
   }
 
   return 0.84
+}
+
+const formatUploadLimit = () => {
+  return `${Math.floor(MAX_PHOTO_UPLOAD_BYTES / 1024 / 1024)} MB`
+}
+
+const isAllowedPhotoFile = (file: File) => {
+  return ALLOWED_PHOTO_UPLOAD_TYPES.has(file.type)
+}
+
+const assertUploadFileSize = (file: Blob) => {
+  if (file.size < 1 || file.size > MAX_PHOTO_UPLOAD_BYTES) {
+    throw new Error(t('submit.errors.photoTooLarge', { max: formatUploadLimit() }))
+  }
+}
+
+const getUploadFileExtension = (file: Blob) => {
+  return PHOTO_UPLOAD_EXTENSION_BY_TYPE.get(file.type) || 'webp'
 }
 
 const applyEditablePost = (detail: EditablePostDetail) => {
@@ -452,7 +487,7 @@ const addFiles = async (files: File[]) => {
   errorMessage.value = ''
   successMessage.value = ''
 
-  const imageFiles = files.filter((file) => file.type.startsWith('image/'))
+  const imageFiles = files.filter(isAllowedPhotoFile)
   if (!imageFiles.length) {
     if (files.length) {
       errorMessage.value = t('submit.errors.invalidPhotoType')
@@ -648,7 +683,7 @@ const advanceUploadProgress = (step = 1) => {
   )
 }
 
-const requestSignedUploadTarget = async (path: string, contentType: string) => {
+const requestSignedUploadTarget = async (path: string, contentType: string, size: number) => {
   if (!auth.authHeaders.value.Authorization) {
     throw new Error(t('submit.errors.sessionExpired'))
   }
@@ -658,7 +693,8 @@ const requestSignedUploadTarget = async (path: string, contentType: string) => {
     headers: auth.authHeaders.value,
     body: {
       path,
-      contentType
+      contentType,
+      size
     }
   })
 }
@@ -666,9 +702,7 @@ const requestSignedUploadTarget = async (path: string, contentType: string) => {
 const uploadWithSignedUrl = async (target: SignedUploadTarget, file: Blob) => {
   const response = await fetch(target.uploadUrl, {
     method: target.method,
-    headers: {
-      'Content-Type': target.contentType
-    },
+    headers: target.headers,
     body: file
   })
 
@@ -703,6 +737,7 @@ const uploadPhoto = async (
   } catch {
     // Server-side fallback conversion still guarantees WebP in persisted paths.
   }
+  assertUploadFileSize(uploadOriginalFile)
 
   let thumbnailFile: File | null = null
   try {
@@ -710,9 +745,12 @@ const uploadPhoto = async (
   } catch {
     thumbnailFile = null
   }
+  if (thumbnailFile) {
+    assertUploadFileSize(thumbnailFile)
+  }
 
   const folderName = String(index + 1).padStart(2, '0')
-  const safeExtension = uploadOriginalFile.name.split('.').pop()?.toLowerCase()?.replace(/[^a-z0-9]/g, '') || 'webp'
+  const safeExtension = getUploadFileExtension(uploadOriginalFile)
   const originalPath = `${userId}/${postFolder}/${folderName}/original.${safeExtension}`
   const thumbPath = thumbnailFile
     ? `${userId}/${postFolder}/${folderName}/thumb.webp`
@@ -720,7 +758,8 @@ const uploadPhoto = async (
 
   const originalTarget = await requestSignedUploadTarget(
     originalPath,
-    uploadOriginalFile.type || 'application/octet-stream'
+    uploadOriginalFile.type,
+    uploadOriginalFile.size
   )
   await uploadWithSignedUrl(originalTarget, uploadOriginalFile)
 
@@ -728,7 +767,7 @@ const uploadPhoto = async (
   advanceUploadProgress()
 
   if (thumbnailFile && thumbPath) {
-    const thumbTarget = await requestSignedUploadTarget(thumbPath, 'image/webp')
+    const thumbTarget = await requestSignedUploadTarget(thumbPath, 'image/webp', thumbnailFile.size)
     await uploadWithSignedUrl(thumbTarget, thumbnailFile)
 
     uploadedPaths.push(thumbPath)
@@ -1016,7 +1055,7 @@ onBeforeUnmount(() => {
           :key="fileInputKey"
           class="photo-input"
           type="file"
-          accept="image/*"
+          accept="image/webp,image/jpeg,image/png,image/avif,image/gif"
           multiple
           :disabled="uploading || loadingEditable || selectedPhotos.length >= MAX_POST_PHOTOS"
           @change="onFileChange"

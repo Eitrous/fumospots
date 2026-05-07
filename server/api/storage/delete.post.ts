@@ -1,6 +1,6 @@
 import { readBody } from 'h3'
-import { isOwnedStoragePath } from '~~/server/utils/posts'
 import { requireAuthenticatedUser } from '~~/server/utils/supabase'
+import { isOwnedStoragePath } from '~~/server/utils/storagePath'
 import { deleteStorageObjects } from '~~/server/utils/storage'
 
 type DeleteStorageBody = {
@@ -15,9 +15,7 @@ const normalizePaths = (value: unknown) => {
   }
 
   return [...new Set(value
-    .filter((entry): entry is string => typeof entry === 'string')
-    .map((entry) => entry.trim())
-    .filter(Boolean))]
+    .filter((entry): entry is string => typeof entry === 'string'))]
 }
 
 export default defineEventHandler(async (event) => {

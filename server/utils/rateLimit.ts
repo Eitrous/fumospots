@@ -19,6 +19,8 @@ type RateLimitKey =
   | 'likePostUser'
   | 'submitIp'
   | 'submitUser'
+  | 'uploadSignIp'
+  | 'uploadSignUser'
   | 'securityReportIp'
 
 type RateLimiterSet = Record<RateLimitKey, Ratelimit>
@@ -89,6 +91,16 @@ const getLimiters = () => {
       ...options,
       prefix: `${RATE_LIMIT_PREFIX}:submit:user`,
       limiter: Ratelimit.slidingWindow(10, '1 h')
+    }),
+    uploadSignIp: new Ratelimit({
+      ...options,
+      prefix: `${RATE_LIMIT_PREFIX}:upload-sign:ip`,
+      limiter: Ratelimit.slidingWindow(300, '1 h')
+    }),
+    uploadSignUser: new Ratelimit({
+      ...options,
+      prefix: `${RATE_LIMIT_PREFIX}:upload-sign:user`,
+      limiter: Ratelimit.slidingWindow(240, '1 h')
     }),
     securityReportIp: new Ratelimit({
       ...options,

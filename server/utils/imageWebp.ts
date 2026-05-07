@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import sharp from 'sharp'
-import { downloadStorageObject, uploadStorageObject } from '~~/server/utils/storage'
+import { deleteStorageObjects, downloadStorageObject, uploadStorageObject } from '~~/server/utils/storage'
 
 export type StoragePathConversionFailure = {
   sourcePath: string
@@ -117,6 +117,14 @@ const convertSinglePathToWebp = async (
     upsert: options.upsert,
     contentType: 'image/webp'
   })
+
+  if (targetPath !== sourcePath) {
+    try {
+      await deleteStorageObjects(event, [sourcePath])
+    } catch {
+      // Source cleanup is best effort; the converted WebP is already stored.
+    }
+  }
 
   return targetPath
 }

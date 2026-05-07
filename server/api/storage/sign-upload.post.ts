@@ -1,65 +1,69 @@
 import { readBody } from 'h3'
-import { isOwnedStoragePath } from '~~/server/utils/posts'
+import { MAX_PHOTO_UPLOAD_BYTES } from '~~/shared/fumo'
+import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
 import { requireAuthenticatedUser } from '~~/server/utils/supabase'
-import { createSignedUploadUrl } from '~~/server/utils/storage'
+import {
+  isAllowedPhotoContentType,
+  isOwnedPhotoUploadPath,
+  normalizeContentType,
+  normalizeStoragePathInput
+} from '~~/server/utils/storagePath'
+import { createSignedUploadUrl, ensureStorageObjectMissing } from '~~/server/utils/storage'
 
 type SignUploadBody = {
   path?: unknown
   contentType?: unknown
-  expiresIn?: unknown
+  size?: unknown
 }
 
-const MAX_CONTENT_TYPE_LENGTH = 128
-
-const sanitizeContentType = (value: unknown) => {
-  if (typeof value !== 'string') {
-    return 'application/octet-stream'
-  }
-
-  const trimmed = value.trim().toLowerCase()
-  if (!trimmed || trimmed.length > MAX_CONTENT_TYPE_LENGTH) {
-    return 'application/octet-stream'
-  }
-
-  return trimmed
-}
-
-const normalizePath = (value: unknown) => {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-const normalizeExpiresIn = (value: unknown) => {
+const normalizeUploadSize = (value: unknown) => {
   const parsed = Number(value)
-  if (!Number.isFinite(parsed)) {
-    return undefined
-  }
-
-  return Math.floor(parsed)
+  return Number.isInteger(parsed) ? parsed : null
 }
 
 export default defineEventHandler(async (event) => {
+  await enforceRateLimit(event, 'uploadSignIp', getRateLimitIdentifier(event))
+
   const { user } = await requireAuthenticatedUser(event)
+  await enforceRateLimit(event, 'uploadSignUser', user.id)
+
   const body = await readBody<SignUploadBody>(event)
 
-  const path = normalizePath(body?.path)
-  if (!path || !isOwnedStoragePath(path, user.id)) {
+  const path = normalizeStoragePathInput(body?.path)
+  const contentType = normalizeContentType(body?.contentType)
+  if (!isAllowedPhotoContentType(contentType) || !isOwnedPhotoUploadPath(path, user.id, contentType)) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Storage path is invalid.'
     })
   }
 
-  const contentType = sanitizeContentType(body?.contentType)
-  const expiresIn = normalizeExpiresIn(body?.expiresIn)
+  const size = normalizeUploadSize(body?.size)
+  if (!size || size < 1 || size > MAX_PHOTO_UPLOAD_BYTES) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Upload size is invalid.'
+    })
+  }
+
+  await ensureStorageObjectMissing(event, path)
+
   const uploadUrl = await createSignedUploadUrl(event, path, {
+    contentLength: size,
     contentType,
-    expiresIn
+    preventOverwrite: true
   })
+  const headers = {
+    'Content-Type': contentType,
+    'If-None-Match': '*'
+  }
 
   return {
     path,
     method: 'PUT' as const,
     uploadUrl,
-    contentType
+    contentType,
+    size,
+    headers
   }
 })

@@ -5,6 +5,10 @@ import {
   MAX_POST_PHOTOS,
   MAX_TITLE_LENGTH
 } from '~~/shared/fumo'
+import {
+  isOwnedPhotoImageStoragePath,
+  isOwnedPhotoThumbStoragePath
+} from '~~/server/utils/storagePath'
 import { signStorageObjects } from '~~/server/utils/supabase'
 
 export type PhotoRow = {
@@ -41,12 +45,6 @@ const isValidLatLng = (value: unknown) => {
     && maybe.lng <= 180
 }
 
-export const isOwnedStoragePath = (path: unknown, userId: string) => {
-  return typeof path === 'string'
-    && path.length > userId.length + 1
-    && path.startsWith(`${userId}/`)
-}
-
 export const normalizePostPayload = (
   body: SubmitPostPayload,
   userId: string
@@ -78,14 +76,14 @@ export const normalizePostPayload = (
 
   const storagePaths = new Set<string>()
   for (const photo of photos) {
-    if (!isOwnedStoragePath(photo?.imagePath, userId)) {
+    if (!isOwnedPhotoImageStoragePath(photo?.imagePath, userId)) {
       throw createError({
         statusCode: 400,
         statusMessage: 'Image path is invalid.'
       })
     }
 
-    if (photo.thumbPath && !isOwnedStoragePath(photo.thumbPath, userId)) {
+    if (photo.thumbPath && !isOwnedPhotoThumbStoragePath(photo.thumbPath, userId)) {
       throw createError({
         statusCode: 400,
         statusMessage: 'Thumbnail path is invalid.'

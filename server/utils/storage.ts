@@ -19,8 +19,9 @@ type R2ResolvedConfig = {
 }
 
 type SignUploadOptions = {
-  contentType?: string
-  expiresIn?: number
+  contentLength: number
+  contentType: string
+  preventOverwrite?: boolean
 }
 
 type UploadStorageObjectOptions = {
@@ -105,6 +106,7 @@ const getR2Client = (event: H3Event) => {
       region: 'auto',
       endpoint: config.endpoint,
       forcePathStyle: true,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
       credentials: {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey
@@ -255,11 +257,11 @@ export const createSignedDownloadUrlMap = async (
 export const createSignedUploadUrl = async (
   event: H3Event,
   path: string,
-  options: SignUploadOptions = {}
+  options: SignUploadOptions
 ) => {
   const { client, config } = getR2Client(event)
   const ttl = clampNumber(
-    Math.floor(Number(options.expiresIn) || config.signedUrlTtlSeconds),
+    config.signedUrlTtlSeconds,
     MIN_SIGNED_URL_TTL_SECONDS,
     MAX_SIGNED_URL_TTL_SECONDS
   )
@@ -267,10 +269,37 @@ export const createSignedUploadUrl = async (
   const command = new PutObjectCommand({
     Bucket: config.bucket,
     Key: path,
-    ContentType: options.contentType || 'application/octet-stream'
+    ContentLength: options.contentLength,
+    ContentType: options.contentType,
+    IfNoneMatch: options.preventOverwrite === false ? undefined : '*'
   })
 
-  return getSignedUrl(client, command, { expiresIn: ttl })
+  return getSignedUrl(client, command, {
+    expiresIn: ttl,
+    signableHeaders: new Set(['content-length', 'content-type', 'if-none-match'])
+  })
+}
+
+export const ensureStorageObjectMissing = async (event: H3Event, path: string) => {
+  const { client, config } = getR2Client(event)
+
+  try {
+    await client.send(new HeadObjectCommand({
+      Bucket: config.bucket,
+      Key: path
+    }))
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return
+    }
+
+    throw error
+  }
+
+  throw createError({
+    statusCode: 409,
+    statusMessage: 'Storage object already exists.'
+  })
 }
 
 export const downloadStorageObject = async (event: H3Event, path: string) => {
