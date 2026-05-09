@@ -75,6 +75,10 @@
     "visibleCount": "{count} published photo(s) are visible in this view",
     "helper": "Pan or zoom to reload the current viewport, then click a marker to open details on the right.",
     "dataLoadFailed": "Failed to load map data.",
+    "previewLoading": "Loading nearby posts…",
+    "previewEmpty": "No post previews are available here yet.",
+    "previewLoadFailed": "Failed to load post previews.",
+    "previewListLabel": "Nearby post list",
     "untitledPost": "Untitled post",
     "taiwanProvinceLabel": "TAIWAN PROVINCE\n台湾省"
   },

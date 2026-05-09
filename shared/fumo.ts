@@ -59,6 +59,16 @@ export type PublicMapPointCollection = GeoJSON.FeatureCollection<
   PublicMapPointProperties
 >
 
+export type PublicMapPreviewItem = {
+  id: number
+  title: string
+  thumbUrl: string | null
+}
+
+export type PublicMapPreviewResponse = {
+  items: PublicMapPreviewItem[]
+}
+
 export type PublicPostDetail = {
   id: number
   title: string

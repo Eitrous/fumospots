@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
+import type { GeoJSONSource, Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl'
 import type {
   GeoBounds,
   PublicMapPointCollection,
+  PublicMapPreviewItem,
+  PublicMapPreviewResponse,
   RegionScope
 } from '~~/shared/fumo'
 import {
@@ -29,6 +31,53 @@ type RegionHighlightCollection = GeoJSON.FeatureCollection<
   RegionHighlightProperties
 >
 
+type DisplayPointProperties = {
+  display_key?: string
+  id?: number
+  marker_opacity?: number
+  marker_scale?: number
+  point_count?: number
+  point_count_abbreviated?: string
+  cluster_group_id?: string
+  cluster_mode?: 'zoom' | 'preview'
+}
+
+type DisplayPointCollection = GeoJSON.FeatureCollection<
+  GeoJSON.Point,
+  DisplayPointProperties
+>
+
+type RawPointFeature = PublicMapPointCollection['features'][number]
+
+type ScreenPointMember = {
+  adjustedLng: number
+  feature: RawPointFeature
+  id: number
+  lat: number
+  lng: number
+  x: number
+  y: number
+}
+
+type ProjectedScreenPoint = {
+  x: number
+  y: number
+}
+
+type DisplayClusterState = {
+  bounds: [[number, number], [number, number]]
+  center: [number, number]
+  globalPointCount: number
+  key: string
+  memberIds: number[]
+  mode: 'zoom' | 'preview'
+  screenMembers: ProjectedScreenPoint[]
+  screenPoint: {
+    x: number
+    y: number
+  }
+}
+
 const emit = defineEmits<{
   'select-post': [postId: number]
 }>()
@@ -40,12 +89,51 @@ const { getPostDetail } = usePostDetailCache()
 const { getRegionGeometry } = useRegionGeometryCache()
 useMapResourceHints()
 
+const MOBILE_BREAKPOINT = 980
+const LOW_ZOOM_PMTILES_CACHE_MAX_ZOOM = 4
+const MAP_DISPLAY_PADDING_PX = 64
+const MAX_PREVIEW_FETCH_ITEMS = 100
+const CLUSTER_ZOOM_FIT_DURATION_MS = 620
+const CLUSTER_ZOOM_BREAKOUT_MARGIN = 0.1
+const CLUSTER_ZOOM_BREAKOUT_STEP = 0.25
+const CLUSTER_ZOOM_STEP = 0.85
+const MARKER_APPEAR_DURATION_MS = 240
+const MARKER_APPEAR_START_OPACITY = 0.62
+const MARKER_APPEAR_START_SCALE = 0.35
+const MOBILE_CLUSTER_PREVIEW_THRESHOLD_PX = 44
+const MOBILE_CLUSTER_RADIUS_BASE = 24
+const MOBILE_CLUSTER_RADIUS_MAX = 30
+const MOBILE_CLUSTER_RADIUS_MIN = 14
+const PREVIEW_SHEET_CLOSE_THRESHOLD_PX = 92
+const REGION_FIT_DURATION_MS = 720
+const REGION_FIT_MAX_ZOOM = 10
+const SELECTED_POST_FAR_DISTANCE_DEGREES = 26
+const SELECTED_POST_FAR_FOCUS_DURATION_MS = 1450
+const SELECTED_POST_FOCUS_DURATION_MS = 1040
+const SELECTED_POST_FOCUS_MIN_ZOOM = 6.8
+const SELECTED_POST_FOCUS_OVERVIEW_ZOOM = 4.2
+const DESKTOP_CLUSTER_PREVIEW_THRESHOLD_PX = 36
+const DESKTOP_CLUSTER_RADIUS_BASE = 20
+const DESKTOP_CLUSTER_RADIUS_MAX = 26
+const DESKTOP_CLUSTER_RADIUS_MIN = 12
+const DESKTOP_PREVIEW_ANCHOR_GAP_PX = 20
+const DESKTOP_PREVIEW_MARGIN_PX = 12
+const DESKTOP_PREVIEW_OFFSET_PX = 14
+const DESKTOP_PREVIEW_WIDTH_PX = 288
+const SAME_COORDINATE_EPSILON = 0.000001
+
 const mapEl = ref<HTMLDivElement | null>(null)
 const mapRef = shallowRef<MapLibreMap | null>(null)
 const mapLoadingRequests = ref(0)
 const isMapLoading = computed(() => mapLoadingRequests.value > 0)
 const taiwanProvinceLabel = computed(() => t('map.taiwanProvinceLabel'))
+const viewportWidth = ref(import.meta.client ? window.innerWidth : MOBILE_BREAKPOINT + 1)
+const isMobileViewport = computed(() => viewportWidth.value <= MOBILE_BREAKPOINT)
 const collection = shallowRef<PublicMapPointCollection>({
+  type: 'FeatureCollection',
+  features: []
+})
+const displayCollection = shallowRef<DisplayPointCollection>({
   type: 'FeatureCollection',
   features: []
 })
@@ -54,22 +142,101 @@ const regionHighlightCollection = shallowRef<RegionHighlightCollection>({
   features: []
 })
 const activeRegionBounds = shallowRef<GeoBounds | null>(null)
+const activePreviewGroupKey = ref('')
+const activePreviewAnchor = shallowRef<{ x: number, y: number } | null>(null)
+const activePreviewMemberIds = ref<number[]>([])
+const previewItems = ref<PublicMapPreviewItem[]>([])
+const previewLoading = ref(false)
+const previewError = ref('')
+const previewSheetDragOffset = ref(0)
+const previewSheetDragging = ref(false)
+const previewSurfaceClass = computed(() => ({
+  'is-dark': isDark.value
+}))
+
+const hasActivePreview = computed(() => Boolean(activePreviewGroupKey.value))
+const previewListLabel = computed(() => t('map.previewListLabel'))
+
+const desktopPreviewStyle = computed(() => {
+  if (isMobileViewport.value || !activePreviewAnchor.value || !mapEl.value) {
+    return {}
+  }
+
+  const anchorX = activePreviewAnchor.value.x
+  const anchorY = activePreviewAnchor.value.y
+  const width = mapEl.value.clientWidth
+  const height = mapEl.value.clientHeight
+  const maxHeight = Math.max(180, Math.min(height - (DESKTOP_PREVIEW_MARGIN_PX * 2), 448))
+  const maxLeft = Math.max(DESKTOP_PREVIEW_MARGIN_PX, width - DESKTOP_PREVIEW_MARGIN_PX - DESKTOP_PREVIEW_WIDTH_PX)
+  const maxTop = Math.max(DESKTOP_PREVIEW_MARGIN_PX, height - DESKTOP_PREVIEW_MARGIN_PX - maxHeight)
+  const centeredSideTop = clamp(
+    anchorY - (maxHeight / 2),
+    DESKTOP_PREVIEW_MARGIN_PX,
+    maxTop
+  )
+
+  const placements = [
+    {
+      left: anchorX + DESKTOP_PREVIEW_ANCHOR_GAP_PX,
+      top: centeredSideTop
+    },
+    {
+      left: anchorX - DESKTOP_PREVIEW_ANCHOR_GAP_PX - DESKTOP_PREVIEW_WIDTH_PX,
+      top: centeredSideTop
+    },
+    {
+      left: anchorX + DESKTOP_PREVIEW_ANCHOR_GAP_PX,
+      top: anchorY + DESKTOP_PREVIEW_OFFSET_PX
+    },
+    {
+      left: anchorX - DESKTOP_PREVIEW_ANCHOR_GAP_PX - DESKTOP_PREVIEW_WIDTH_PX,
+      top: anchorY + DESKTOP_PREVIEW_OFFSET_PX
+    },
+    {
+      left: anchorX + DESKTOP_PREVIEW_ANCHOR_GAP_PX,
+      top: anchorY - DESKTOP_PREVIEW_OFFSET_PX - maxHeight
+    },
+    {
+      left: anchorX - DESKTOP_PREVIEW_ANCHOR_GAP_PX - DESKTOP_PREVIEW_WIDTH_PX,
+      top: anchorY - DESKTOP_PREVIEW_OFFSET_PX - maxHeight
+    }
+  ]
+
+  for (const placement of placements) {
+    if (
+      placement.left >= DESKTOP_PREVIEW_MARGIN_PX
+      && placement.left <= maxLeft
+      && placement.top >= DESKTOP_PREVIEW_MARGIN_PX
+      && placement.top <= maxTop
+    ) {
+      return {
+        left: `${placement.left}px`,
+        maxHeight: `${maxHeight}px`,
+        top: `${placement.top}px`
+      }
+    }
+  }
+
+  return {
+    left: `${clamp(anchorX + DESKTOP_PREVIEW_ANCHOR_GAP_PX, DESKTOP_PREVIEW_MARGIN_PX, maxLeft)}px`,
+    maxHeight: `${maxHeight}px`,
+    top: `${centeredSideTop}px`
+  }
+})
+
+const mobilePreviewSheetStyle = computed(() => {
+  return {
+    '--preview-sheet-drag-offset': `${previewSheetDragOffset.value}px`
+  }
+})
 
 let maplibregl: typeof import('maplibre-gl') | null = null
-
-const SELECTED_POST_FOCUS_MIN_ZOOM = 6.8
-const SELECTED_POST_FOCUS_OVERVIEW_ZOOM = 4.2
-const SELECTED_POST_FOCUS_DURATION_MS = 1040
-const SELECTED_POST_FAR_FOCUS_DURATION_MS = 1450
-const SELECTED_POST_FAR_DISTANCE_DEGREES = 26
-const LOW_ZOOM_PMTILES_CACHE_MAX_ZOOM = 4
-const REGION_FIT_MAX_ZOOM = 10
-const REGION_FIT_DURATION_MS = 720
 
 let selectedPostFocusSequence = 0
 let regionHighlightSequence = 0
 let refreshSourceSequence = 0
 let mapStyleSequence = 0
+let previewRequestSequence = 0
 let pendingRegionFitKey: string | null = null
 let mapInteractionsBound = false
 let initialSourceLoaded = false
@@ -78,8 +245,17 @@ let mapPostsAbortController: AbortController | null = null
 let mapResizeObserver: ResizeObserver | null = null
 let mapResizeFrame: number | null = null
 let mapRuntimeSyncFrame: number | null = null
+let mapDisplaySyncFrame: number | null = null
+let markerAppearAnimationFrame: number | null = null
 let lowZoomWarmupAbortController: AbortController | null = null
 let pendingStyleSourceRefresh = false
+let previewSheetPointerId: number | null = null
+let previewSheetPointerStartY = 0
+let previewOpenedAt = 0
+let displayClusterStateByKey = new Map<string, DisplayClusterState>()
+let displayFeatureKeys = new Set<string>()
+const markerAppearStartByKey = new Map<string, number>()
+const previewGroupCache = new Map<string, PublicMapPreviewItem[]>()
 
 const getMapStyleUrl = (dark = isDark.value) => {
   return resolveHostedMapStyleUrl({
@@ -107,8 +283,30 @@ const emptyCollection: PublicMapPointCollection = {
   features: []
 }
 
+const clamp = (value: number, min: number, max: number) => {
+  return Math.min(max, Math.max(min, value))
+}
+
+const easeOutCubic = (progress: number) => {
+  return 1 - Math.pow(1 - progress, 3)
+}
+
 const normalizeLongitude = (lng: number) => {
   return ((((lng + 180) % 360) + 360) % 360) - 180
+}
+
+const normalizeLongitudeRelativeTo = (lng: number, referenceLng: number) => {
+  let adjusted = lng
+
+  while (adjusted - referenceLng > 180) {
+    adjusted -= 360
+  }
+
+  while (adjusted - referenceLng < -180) {
+    adjusted += 360
+  }
+
+  return adjusted
 }
 
 const getWrappedLongitudeDelta = (from: number, to: number) => {
@@ -129,6 +327,129 @@ const getRegionScopeKey = (scope: RegionScope | null | undefined) => {
   ].join('::')
 }
 
+const formatClusterCount = (count: number) => {
+  if (count >= 1000000) {
+    return `${Math.round(count / 100000) / 10}M`
+  }
+
+  if (count >= 1000) {
+    return `${Math.round(count / 100) / 10}K`
+  }
+
+  return String(count)
+}
+
+const getDisplayFeatureKey = (feature: GeoJSON.Feature<GeoJSON.Point, DisplayPointProperties>) => {
+  const pointCount = Number(feature.properties?.point_count)
+  const clusterKey = feature.properties?.cluster_group_id
+
+  if (Number.isFinite(pointCount) && pointCount > 0 && typeof clusterKey === 'string' && clusterKey) {
+    return `cluster:${clusterKey}`
+  }
+
+  const id = Number(feature.properties?.id)
+  return Number.isInteger(id) && id > 0 ? `post:${id}` : ''
+}
+
+const getMarkerAppearState = (displayKey: string, now: number, isNewFeature: boolean) => {
+  if (!displayKey) {
+    return {
+      opacity: 1,
+      scale: 1
+    }
+  }
+
+  let startAt = markerAppearStartByKey.get(displayKey)
+
+  if (startAt == null && isNewFeature) {
+    startAt = now
+    markerAppearStartByKey.set(displayKey, startAt)
+  }
+
+  if (startAt == null) {
+    return {
+      opacity: 1,
+      scale: 1
+    }
+  }
+
+  const progress = clamp((now - startAt) / MARKER_APPEAR_DURATION_MS, 0, 1)
+  const easedProgress = easeOutCubic(progress)
+
+  if (progress >= 1) {
+    markerAppearStartByKey.delete(displayKey)
+    return {
+      opacity: 1,
+      scale: 1
+    }
+  }
+
+  return {
+    opacity: MARKER_APPEAR_START_OPACITY + ((1 - MARKER_APPEAR_START_OPACITY) * easedProgress),
+    scale: MARKER_APPEAR_START_SCALE + ((1 - MARKER_APPEAR_START_SCALE) * easedProgress)
+  }
+}
+
+const scheduleMarkerAppearAnimation = () => {
+  if (!import.meta.client || markerAppearAnimationFrame !== null || !markerAppearStartByKey.size) {
+    return
+  }
+
+  markerAppearAnimationFrame = window.requestAnimationFrame(() => {
+    markerAppearAnimationFrame = null
+
+    if (!mapRef.value || !displayCollection.value.features.length || !markerAppearStartByKey.size) {
+      return
+    }
+
+    const now = performance.now()
+    let hasActiveAnimation = false
+    let hasFeatureChange = false
+    const nextFeatures = displayCollection.value.features.map((feature) => {
+      const displayKey = getDisplayFeatureKey(feature)
+
+      if (!displayKey) {
+        return feature
+      }
+
+      const nextState = getMarkerAppearState(displayKey, now, false)
+      if (nextState.scale < 1 || nextState.opacity < 1) {
+        hasActiveAnimation = true
+      }
+
+      if (
+        feature.properties?.marker_scale === nextState.scale
+        && feature.properties?.marker_opacity === nextState.opacity
+      ) {
+        return feature
+      }
+
+      hasFeatureChange = true
+      return {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          marker_opacity: nextState.opacity,
+          marker_scale: nextState.scale
+        }
+      }
+    })
+
+    if (hasFeatureChange) {
+      displayCollection.value = {
+        ...displayCollection.value,
+        features: nextFeatures
+      }
+      const source = mapRef.value.getSource('posts') as GeoJSONSource | null
+      source?.setData(displayCollection.value)
+    }
+
+    if (hasActiveAnimation) {
+      scheduleMarkerAppearAnimation()
+    }
+  })
+}
+
 const startMapLoading = () => {
   mapLoadingRequests.value += 1
 }
@@ -140,6 +461,44 @@ const finishMapLoading = () => {
 const getFeaturePostId = (raw: Record<string, unknown> | null | undefined) => {
   const id = Number(raw?.id)
   return Number.isFinite(id) ? id : null
+}
+
+const getClusterGroupId = (raw: Record<string, unknown> | null | undefined) => {
+  const groupId = raw?.cluster_group_id
+  return typeof groupId === 'string' && groupId ? groupId : ''
+}
+
+const updateViewportWidth = () => {
+  if (!import.meta.client) {
+    return
+  }
+
+  viewportWidth.value = window.innerWidth
+}
+
+const closeActivePreview = () => {
+  activePreviewGroupKey.value = ''
+  activePreviewAnchor.value = null
+  activePreviewMemberIds.value = []
+  previewItems.value = []
+  previewLoading.value = false
+  previewError.value = ''
+  previewSheetDragOffset.value = 0
+  previewSheetDragging.value = false
+  previewRequestSequence += 1
+  teardownPreviewSheetPointerListeners()
+}
+
+const canClosePreviewFromSurfaceClick = () => {
+  return Date.now() - previewOpenedAt > 180
+}
+
+const handlePreviewDismissRequest = () => {
+  if (!canClosePreviewFromSurfaceClick()) {
+    return
+  }
+
+  closeActivePreview()
 }
 
 const buildRegionHighlightCollection = (
@@ -298,7 +657,7 @@ const clearRegionHighlightSource = () => {
 }
 
 const getRegionFitPadding = () => {
-  if (import.meta.client && window.innerWidth <= 980) {
+  if (import.meta.client && window.innerWidth <= MOBILE_BREAKPOINT) {
     return {
       top: 56,
       right: 44,
@@ -312,6 +671,21 @@ const getRegionFitPadding = () => {
     right: 56,
     bottom: 56,
     left: 56
+  }
+}
+
+const getClusterBreakoutPadding = () => {
+  const basePadding = getRegionFitPadding()
+
+  if (!import.meta.client || !mapEl.value) {
+    return basePadding
+  }
+
+  return {
+    top: Math.max(basePadding.top, Math.round(mapEl.value.clientHeight * 0.15)),
+    right: Math.max(basePadding.right, Math.round(mapEl.value.clientWidth * 0.15)),
+    bottom: Math.max(basePadding.bottom, Math.round(mapEl.value.clientHeight * 0.15)),
+    left: Math.max(basePadding.left, Math.round(mapEl.value.clientWidth * 0.15))
   }
 }
 
@@ -339,6 +713,318 @@ const isAbortError = (error: unknown) => {
   return error instanceof Error && error.name === 'AbortError'
 }
 
+const getAdaptiveClusterRadius = (pointCount: number, zoom: number) => {
+  const isMobile = isMobileViewport.value
+  const densityFactor = clamp(
+    (pointCount - (isMobile ? 18 : 24)) / (isMobile ? 70 : 90),
+    0,
+    1
+  )
+  const densityBoost = densityFactor * (isMobile ? 10 : 8)
+  const zoomFactor = clamp((zoom - 2) / 10, 0, 1)
+  const radius = (isMobile ? MOBILE_CLUSTER_RADIUS_BASE : DESKTOP_CLUSTER_RADIUS_BASE)
+    + densityBoost
+    - (zoomFactor * (isMobile ? 10 : 8))
+
+  return clamp(
+    radius,
+    isMobile ? MOBILE_CLUSTER_RADIUS_MIN : DESKTOP_CLUSTER_RADIUS_MIN,
+    isMobile ? MOBILE_CLUSTER_RADIUS_MAX : DESKTOP_CLUSTER_RADIUS_MAX
+  )
+}
+
+const collectVisiblePointMembers = () => {
+  if (!mapRef.value || !mapEl.value) {
+    return [] as ScreenPointMember[]
+  }
+
+  const centerLng = mapRef.value.getCenter().lng
+  const members: ScreenPointMember[] = []
+
+  for (const feature of collection.value.features) {
+    if (feature.geometry.type !== 'Point') {
+      continue
+    }
+
+    const coordinates = feature.geometry.coordinates
+    const lng = Number(coordinates[0])
+    const lat = Number(coordinates[1])
+    const id = Number(feature.properties?.id)
+
+    if (!Number.isFinite(lng) || !Number.isFinite(lat) || !Number.isInteger(id) || id <= 0) {
+      continue
+    }
+
+    const adjustedLng = normalizeLongitudeRelativeTo(lng, centerLng)
+    const projected = mapRef.value.project([adjustedLng, lat])
+
+    members.push({
+      adjustedLng,
+      feature,
+      id,
+      lat,
+      lng,
+      x: projected.x,
+      y: projected.y
+    })
+  }
+
+  return members
+}
+
+const clusterProjectedScreenPoints = <T extends ProjectedScreenPoint>(members: T[], radius: number) => {
+  if (!members.length) {
+    return [] as T[][]
+  }
+
+  const radiusSquared = radius * radius
+  const cells = new Map<string, number[]>()
+  const cellXByIndex: number[] = []
+  const cellYByIndex: number[] = []
+
+  members.forEach((member, index) => {
+    const cellX = Math.floor(member.x / radius)
+    const cellY = Math.floor(member.y / radius)
+    const key = `${cellX}:${cellY}`
+    const bucket = cells.get(key) || []
+    bucket.push(index)
+    cells.set(key, bucket)
+    cellXByIndex[index] = cellX
+    cellYByIndex[index] = cellY
+  })
+
+  const visited = new Array(members.length).fill(false)
+  const groups: T[][] = []
+
+  for (let index = 0; index < members.length; index += 1) {
+    if (visited[index]) {
+      continue
+    }
+
+    visited[index] = true
+    const queue = [index]
+    const group: ScreenPointMember[] = []
+
+    while (queue.length) {
+      const currentIndex = queue.pop()
+      if (currentIndex == null) {
+        continue
+      }
+
+      const current = members[currentIndex]
+      group.push(current)
+
+      for (let xOffset = -1; xOffset <= 1; xOffset += 1) {
+        for (let yOffset = -1; yOffset <= 1; yOffset += 1) {
+          const bucket = cells.get(`${cellXByIndex[currentIndex] + xOffset}:${cellYByIndex[currentIndex] + yOffset}`)
+          if (!bucket?.length) {
+            continue
+          }
+
+          for (const candidateIndex of bucket) {
+            if (visited[candidateIndex]) {
+              continue
+            }
+
+            const candidate = members[candidateIndex]
+            const dx = candidate.x - current.x
+            const dy = candidate.y - current.y
+
+            if ((dx * dx) + (dy * dy) > radiusSquared) {
+              continue
+            }
+
+            visited[candidateIndex] = true
+            queue.push(candidateIndex)
+          }
+        }
+      }
+    }
+
+    groups.push(group)
+  }
+
+  return groups
+}
+
+const clusterVisiblePointMembers = (members: ScreenPointMember[], radius: number) => {
+  return clusterProjectedScreenPoints(members, radius)
+}
+
+const buildClusterState = (members: ScreenPointMember[], globalPointCount: number): DisplayClusterState => {
+  const sortedIds = members
+    .map(member => member.id)
+    .slice()
+    .sort((left, right) => left - right)
+  const key = sortedIds.join(':')
+  const centerAdjustedLng = members.reduce((sum, member) => sum + member.adjustedLng, 0) / members.length
+  const centerLat = members.reduce((sum, member) => sum + member.lat, 0) / members.length
+  const centerX = members.reduce((sum, member) => sum + member.x, 0) / members.length
+  const centerY = members.reduce((sum, member) => sum + member.y, 0) / members.length
+  const minAdjustedLng = Math.min(...members.map(member => member.adjustedLng))
+  const maxAdjustedLng = Math.max(...members.map(member => member.adjustedLng))
+  const minLat = Math.min(...members.map(member => member.lat))
+  const maxLat = Math.max(...members.map(member => member.lat))
+
+  let maxSpreadPx = 0
+  for (let leftIndex = 0; leftIndex < members.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < members.length; rightIndex += 1) {
+      const dx = members[leftIndex].x - members[rightIndex].x
+      const dy = members[leftIndex].y - members[rightIndex].y
+      maxSpreadPx = Math.max(maxSpreadPx, Math.sqrt((dx * dx) + (dy * dy)))
+    }
+  }
+
+  const sameCoordinates = (
+    Math.abs(maxAdjustedLng - minAdjustedLng) <= SAME_COORDINATE_EPSILON
+    && Math.abs(maxLat - minLat) <= SAME_COORDINATE_EPSILON
+  )
+
+  const mapMaxZoom = mapRef.value?.getMaxZoom() ?? 22
+  const currentZoom = mapRef.value?.getZoom() ?? MAP_DEFAULT_ZOOM
+  const estimatedMaxSpreadPx = maxSpreadPx * Math.pow(2, Math.max(0, mapMaxZoom - currentZoom))
+  const previewThreshold = isMobileViewport.value
+    ? MOBILE_CLUSTER_PREVIEW_THRESHOLD_PX
+    : DESKTOP_CLUSTER_PREVIEW_THRESHOLD_PX
+
+  return {
+    bounds: [
+      [normalizeLongitude(minAdjustedLng), minLat],
+      [normalizeLongitude(maxAdjustedLng), maxLat]
+    ],
+    center: [normalizeLongitude(centerAdjustedLng), centerLat],
+    globalPointCount,
+    key,
+    memberIds: sortedIds,
+    mode: sameCoordinates || estimatedMaxSpreadPx < previewThreshold ? 'preview' : 'zoom',
+    screenMembers: members.map(member => ({
+      x: member.x,
+      y: member.y
+    })),
+    screenPoint: {
+      x: centerX,
+      y: centerY
+    }
+  }
+}
+
+const syncDisplaySource = () => {
+  if (!mapRef.value) {
+    return
+  }
+
+  const visibleMembers = collectVisiblePointMembers()
+  const previousDisplayKeys = displayFeatureKeys
+  const nextDisplayKeys = new Set<string>()
+  const now = import.meta.client ? performance.now() : 0
+  const nextDisplayCollection: DisplayPointCollection = {
+    type: 'FeatureCollection',
+    features: []
+  }
+  const nextClusterStateByKey = new Map<string, DisplayClusterState>()
+
+  if (!visibleMembers.length) {
+    displayCollection.value = nextDisplayCollection
+    displayClusterStateByKey = nextClusterStateByKey
+    const source = mapRef.value.getSource('posts') as GeoJSONSource | null
+    source?.setData(nextDisplayCollection)
+    closeActivePreview()
+    return
+  }
+
+  const radius = getAdaptiveClusterRadius(visibleMembers.length, mapRef.value.getZoom())
+  const groups = clusterVisiblePointMembers(visibleMembers, radius)
+
+  for (const group of groups) {
+    if (group.length === 1) {
+      const baseFeature = group[0].feature
+      const displayKey = `post:${group[0].id}`
+      const markerState = getMarkerAppearState(displayKey, now, !previousDisplayKeys.has(displayKey))
+      nextDisplayKeys.add(displayKey)
+      nextDisplayCollection.features.push({
+        ...baseFeature,
+        properties: {
+          ...baseFeature.properties,
+          display_key: displayKey,
+          marker_opacity: markerState.opacity,
+          marker_scale: markerState.scale
+        }
+      })
+      continue
+    }
+
+    const clusterState = buildClusterState(group, visibleMembers.length)
+    const displayKey = `cluster:${clusterState.key}`
+    const markerState = getMarkerAppearState(displayKey, now, !previousDisplayKeys.has(displayKey))
+    nextDisplayKeys.add(displayKey)
+    nextClusterStateByKey.set(clusterState.key, clusterState)
+    nextDisplayCollection.features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: clusterState.center
+      },
+      properties: {
+        display_key: displayKey,
+        cluster_group_id: clusterState.key,
+        cluster_mode: clusterState.mode,
+        marker_opacity: markerState.opacity,
+        marker_scale: markerState.scale,
+        point_count: clusterState.memberIds.length,
+        point_count_abbreviated: formatClusterCount(clusterState.memberIds.length)
+      }
+    })
+  }
+
+  displayCollection.value = nextDisplayCollection
+  displayClusterStateByKey = nextClusterStateByKey
+  displayFeatureKeys = nextDisplayKeys
+  for (const displayKey of [...markerAppearStartByKey.keys()]) {
+    if (!nextDisplayKeys.has(displayKey)) {
+      markerAppearStartByKey.delete(displayKey)
+    }
+  }
+  const source = mapRef.value.getSource('posts') as GeoJSONSource | null
+  source?.setData(nextDisplayCollection)
+  scheduleMarkerAppearAnimation()
+
+  if (!activePreviewGroupKey.value || !activePreviewMemberIds.value.length) {
+    return
+  }
+
+  const nextPreviewCluster = displayClusterStateByKey.get(activePreviewGroupKey.value)
+  if (nextPreviewCluster) {
+    activePreviewAnchor.value = nextPreviewCluster.screenPoint
+    return
+  }
+
+  const fallbackCluster = [...displayClusterStateByKey.values()].find((clusterState) => {
+    if (clusterState.memberIds.length !== activePreviewMemberIds.value.length) {
+      return false
+    }
+
+    return clusterState.memberIds.every((memberId, index) => {
+      return memberId === activePreviewMemberIds.value[index]
+    })
+  })
+
+  if (fallbackCluster) {
+    activePreviewGroupKey.value = fallbackCluster.key
+    activePreviewAnchor.value = fallbackCluster.screenPoint
+  }
+}
+
+const scheduleDisplaySourceSync = () => {
+  if (!import.meta.client || mapDisplaySyncFrame !== null) {
+    return
+  }
+
+  mapDisplaySyncFrame = window.requestAnimationFrame(() => {
+    mapDisplaySyncFrame = null
+    syncDisplaySource()
+  })
+}
+
 const refreshSource = async (options: { loadingStarted?: boolean, force?: boolean } = {}) => {
   if (!mapRef.value) {
     return
@@ -352,6 +1038,7 @@ const refreshSource = async (options: { loadingStarted?: boolean, force?: boolea
   if (!options.loadingStarted) {
     startMapLoading()
   }
+
   try {
     const geojson = await fetchGeoJson(abortController.signal, { force: options.force })
     const nextCollection = geojson || emptyCollection
@@ -365,10 +1052,10 @@ const refreshSource = async (options: { loadingStarted?: boolean, force?: boolea
     }
 
     collection.value = nextCollection
-
-    const source = mapRef.value.getSource('posts') as GeoJSONSource | null
-    source?.setData(nextCollection)
+    previewGroupCache.clear()
+    closeActivePreview()
     syncSelectionSource()
+    syncDisplaySource()
   } catch (error) {
     if (isAbortError(error)) {
       return
@@ -439,10 +1126,7 @@ const ensurePostLayers = () => {
   if (!mapRef.value.getSource(sourceName)) {
     mapRef.value.addSource(sourceName, {
       type: 'geojson',
-      data: collection.value,
-      cluster: true,
-      clusterMaxZoom: 10,
-      clusterRadius: 16
+      data: displayCollection.value
     })
   }
 
@@ -461,18 +1145,24 @@ const ensurePostLayers = () => {
       filter: ['has', 'point_count'],
       paint: {
         'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['get', 'point_count'],
-          1, 11,
-          8, 18,
-          25, 28,
-          70, 40,
-          160, 54
+          '*',
+          ['coalesce', ['get', 'marker_scale'], 1],
+          [
+            'interpolate',
+            ['linear'],
+            ['get', 'point_count'],
+            1, 11,
+            8, 18,
+            25, 28,
+            70, 40,
+            160, 54
+          ]
         ],
         'circle-color': primaryColor,
+        'circle-opacity': ['coalesce', ['get', 'marker_opacity'], 1],
         'circle-stroke-width': 2,
-        'circle-stroke-color': contrastColor
+        'circle-stroke-color': contrastColor,
+        'circle-stroke-opacity': ['coalesce', ['get', 'marker_opacity'], 1]
       }
     })
   }
@@ -489,7 +1179,8 @@ const ensurePostLayers = () => {
         'text-size': 12
       },
       paint: {
-        'text-color': contrastColor
+        'text-color': contrastColor,
+        'text-opacity': ['coalesce', ['get', 'marker_opacity'], 1]
       }
     })
   }
@@ -501,10 +1192,12 @@ const ensurePostLayers = () => {
       source: sourceName,
       filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-radius': 7,
+        'circle-radius': ['*', ['coalesce', ['get', 'marker_scale'], 1], 7],
         'circle-color': primaryColor,
+        'circle-opacity': ['coalesce', ['get', 'marker_opacity'], 1],
         'circle-stroke-width': 2,
-        'circle-stroke-color': contrastColor
+        'circle-stroke-color': contrastColor,
+        'circle-stroke-opacity': ['coalesce', ['get', 'marker_opacity'], 1]
       }
     })
   }
@@ -550,7 +1243,9 @@ const scheduleMapResize = () => {
 
   mapResizeFrame = window.requestAnimationFrame(() => {
     mapResizeFrame = null
+    updateViewportWidth()
     mapRef.value?.resize()
+    scheduleDisplaySourceSync()
   })
 }
 
@@ -564,6 +1259,170 @@ const observeMapContainer = () => {
     scheduleMapResize()
   })
   mapResizeObserver.observe(mapEl.value)
+}
+
+const getPreviewItemsForGroup = async (clusterState: DisplayClusterState) => {
+  const cached = previewGroupCache.get(clusterState.key)
+  if (cached) {
+    return cached
+  }
+
+  const ids = clusterState.memberIds.slice(0, MAX_PREVIEW_FETCH_ITEMS)
+  const response = await $fetch<PublicMapPreviewResponse>('/api/map/previews', {
+    query: {
+      ids: ids.join(',')
+    }
+  })
+  const nextItems = response.items || []
+  previewGroupCache.set(clusterState.key, nextItems)
+  return nextItems
+}
+
+const openClusterPreview = async (clusterState: DisplayClusterState) => {
+  const currentSequence = ++previewRequestSequence
+
+  activePreviewGroupKey.value = clusterState.key
+  activePreviewAnchor.value = clusterState.screenPoint
+  activePreviewMemberIds.value = clusterState.memberIds.slice()
+  previewOpenedAt = Date.now()
+  previewItems.value = []
+  previewError.value = ''
+  previewLoading.value = true
+  previewSheetDragOffset.value = 0
+
+  try {
+    const nextItems = await getPreviewItemsForGroup(clusterState)
+
+    if (
+      currentSequence !== previewRequestSequence
+      || activePreviewGroupKey.value !== clusterState.key
+    ) {
+      return
+    }
+
+    previewItems.value = nextItems
+  } catch {
+    if (
+      currentSequence !== previewRequestSequence
+      || activePreviewGroupKey.value !== clusterState.key
+    ) {
+      return
+    }
+
+    previewError.value = t('map.previewLoadFailed')
+  } finally {
+    if (
+      currentSequence === previewRequestSequence
+      && activePreviewGroupKey.value === clusterState.key
+    ) {
+      previewLoading.value = false
+    }
+  }
+}
+
+const zoomToClusterState = (clusterState: DisplayClusterState) => {
+  if (!mapRef.value) {
+    return
+  }
+
+  const currentZoom = mapRef.value.getZoom()
+  const maxZoom = mapRef.value.getMaxZoom() - 0.75
+  const minimumTargetZoom = Math.min(
+    maxZoom,
+    currentZoom + CLUSTER_ZOOM_STEP
+  )
+
+  let breakoutZoom: number | null = null
+  for (
+    let targetZoom = minimumTargetZoom;
+    targetZoom <= maxZoom + 0.001;
+    targetZoom += CLUSTER_ZOOM_BREAKOUT_STEP
+  ) {
+    const scale = Math.pow(2, targetZoom - currentZoom)
+    const simulatedMembers = clusterState.screenMembers.map((member) => ({
+      x: member.x * scale,
+      y: member.y * scale
+    }))
+    const radius = getAdaptiveClusterRadius(clusterState.globalPointCount, targetZoom)
+    const simulatedGroups = clusterProjectedScreenPoints(simulatedMembers, radius)
+
+    if (simulatedGroups.length > 1) {
+      breakoutZoom = Math.min(maxZoom, targetZoom + CLUSTER_ZOOM_BREAKOUT_MARGIN)
+      break
+    }
+  }
+
+  let targetZoom = breakoutZoom ?? minimumTargetZoom
+  const padding = getClusterBreakoutPadding()
+  const camera = mapRef.value.cameraForBounds(clusterState.bounds, { padding })
+  const fitCenter = camera.center ?? clusterState.center
+  const fitZoom = Number(camera.zoom)
+
+  if (Number.isFinite(fitZoom)) {
+    targetZoom = Math.min(targetZoom, fitZoom)
+  }
+
+  mapRef.value.easeTo({
+    center: fitCenter,
+    zoom: targetZoom,
+    duration: CLUSTER_ZOOM_FIT_DURATION_MS,
+    essential: true
+  })
+}
+
+const handlePreviewItemSelection = (postId: number) => {
+  closeActivePreview()
+  emit('select-post', postId)
+}
+
+const handleMapClick = async (event: MapMouseEvent) => {
+  if (!mapRef.value) {
+    return
+  }
+
+  const markerFeatures = mapRef.value.queryRenderedFeatures(event.point, {
+    layers: ['clusters', 'unclustered-point']
+  })
+
+  if (!markerFeatures.length) {
+    closeActivePreview()
+    return
+  }
+
+  const clusterFeature = markerFeatures.find(feature => {
+    return feature.layer.id === 'clusters'
+  })
+
+  if (clusterFeature) {
+    const clusterState = displayClusterStateByKey.get(
+      getClusterGroupId(clusterFeature.properties as Record<string, unknown> | undefined)
+    )
+
+    if (!clusterState) {
+      return
+    }
+
+    if (clusterState.mode === 'preview') {
+      await openClusterPreview(clusterState)
+      return
+    }
+
+    closeActivePreview()
+    zoomToClusterState(clusterState)
+    return
+  }
+
+  const pointFeature = markerFeatures.find(feature => {
+    return feature.layer.id === 'unclustered-point'
+  })
+  const postId = getFeaturePostId(pointFeature?.properties as Record<string, unknown> | undefined)
+
+  if (!postId) {
+    return
+  }
+
+  closeActivePreview()
+  emit('select-post', postId)
 }
 
 const bindMapInteractions = () => {
@@ -589,43 +1448,10 @@ const bindMapInteractions = () => {
     mapRef.value?.getCanvas().style.setProperty('cursor', '')
   })
 
-  mapRef.value.on('click', 'clusters', async (event) => {
-    const features = mapRef.value?.queryRenderedFeatures(event.point, {
-      layers: ['clusters']
-    })
-    const cluster = features?.[0]
-    const clusterId = cluster?.properties?.cluster_id
-
-    if (
-      clusterId == null
-      || !mapRef.value
-      || !cluster
-      || cluster.geometry.type !== 'Point'
-    ) {
-      return
-    }
-
-    const source = mapRef.value.getSource('posts') as GeoJSONSource
-    const zoom = await source.getClusterExpansionZoom(clusterId)
-    const coordinates = (cluster.geometry as GeoJSON.Point).coordinates as [number, number]
-
-    mapRef.value.easeTo({
-      center: coordinates,
-      zoom
-    })
-  })
-
-  mapRef.value.on('click', 'unclustered-point', (event) => {
-    const feature = event.features?.[0]
-    const postId = getFeaturePostId(feature?.properties as Record<string, unknown> | undefined)
-
-    if (!postId) {
-      return
-    }
-
-    emit('select-post', postId)
-  })
-
+  mapRef.value.on('click', handleMapClick)
+  mapRef.value.on('dragstart', closeActivePreview)
+  mapRef.value.on('zoomstart', closeActivePreview)
+  mapRef.value.on('zoomend', scheduleDisplaySourceSync)
 }
 
 const scheduleInitialSourceLoad = () => {
@@ -755,6 +1581,70 @@ const refreshVisibleMapSource = () => {
   void refreshSource({ force: true })
 }
 
+const teardownPreviewSheetPointerListeners = () => {
+  if (!import.meta.client) {
+    return
+  }
+
+  window.removeEventListener('pointermove', handlePreviewSheetWindowPointerMove)
+  window.removeEventListener('pointerup', handlePreviewSheetWindowPointerUp)
+  window.removeEventListener('pointercancel', handlePreviewSheetWindowPointerCancel)
+  previewSheetPointerId = null
+}
+
+function handlePreviewSheetWindowPointerMove(event: PointerEvent) {
+  if (previewSheetPointerId !== event.pointerId) {
+    return
+  }
+
+  previewSheetDragOffset.value = Math.max(0, event.clientY - previewSheetPointerStartY)
+}
+
+function handlePreviewSheetWindowPointerUp(event: PointerEvent) {
+  if (previewSheetPointerId !== event.pointerId) {
+    return
+  }
+
+  const shouldClose = previewSheetDragOffset.value >= PREVIEW_SHEET_CLOSE_THRESHOLD_PX
+  previewSheetDragging.value = false
+  previewSheetDragOffset.value = 0
+  teardownPreviewSheetPointerListeners()
+
+  if (shouldClose) {
+    closeActivePreview()
+  }
+}
+
+function handlePreviewSheetWindowPointerCancel(event: PointerEvent) {
+  if (previewSheetPointerId !== event.pointerId) {
+    return
+  }
+
+  previewSheetDragging.value = false
+  previewSheetDragOffset.value = 0
+  teardownPreviewSheetPointerListeners()
+}
+
+const handlePreviewSheetPointerDown = (event: PointerEvent) => {
+  if (!import.meta.client || !isMobileViewport.value) {
+    return
+  }
+
+  previewSheetPointerId = event.pointerId
+  previewSheetPointerStartY = event.clientY
+  previewSheetDragOffset.value = 0
+  previewSheetDragging.value = true
+
+  window.addEventListener('pointermove', handlePreviewSheetWindowPointerMove)
+  window.addEventListener('pointerup', handlePreviewSheetWindowPointerUp)
+  window.addEventListener('pointercancel', handlePreviewSheetWindowPointerCancel)
+}
+
+const handleWindowResize = () => {
+  updateViewportWidth()
+  scheduleMapResize()
+}
+
 watch([isDark, locale], async ([dark]) => {
   if (!mapRef.value) {
     return
@@ -772,6 +1662,7 @@ watch([isDark, locale], async ([dark]) => {
     }
 
     pendingStyleSourceRefresh = initialSourceLoaded
+    mapInteractionsBound = false
     mapRef.value.setStyle(style)
     scheduleMapResize()
     scheduleMapRuntimeSync()
@@ -785,6 +1676,7 @@ onMounted(async () => {
     return
   }
 
+  updateViewportWidth()
   startMapLoading()
   try {
     maplibregl = await import('maplibre-gl')
@@ -808,6 +1700,7 @@ onMounted(async () => {
   finishMapLoading()
 
   window.addEventListener('focus', refreshVisibleMapSource)
+  window.addEventListener('resize', handleWindowResize)
   document.addEventListener('visibilitychange', refreshVisibleMapSource)
 
   mapRef.value.on('style.load', scheduleMapRuntimeSync)
@@ -832,6 +1725,7 @@ onMounted(async () => {
 watch(
   () => props.selectedPostId,
   (selectedPostId) => {
+    closeActivePreview()
     syncSelectionSource()
 
     if (selectedPostId) {
@@ -865,10 +1759,12 @@ watch(
 onBeforeUnmount(() => {
   mapStyleSequence += 1
   refreshSourceSequence += 1
+  previewRequestSequence += 1
   mapPostsAbortController?.abort()
   mapPostsAbortController = null
   lowZoomWarmupAbortController?.abort()
   lowZoomWarmupAbortController = null
+  teardownPreviewSheetPointerListeners()
   mapResizeObserver?.disconnect()
   mapResizeObserver = null
   if (mapResizeFrame !== null) {
@@ -879,7 +1775,16 @@ onBeforeUnmount(() => {
     window.cancelAnimationFrame(mapRuntimeSyncFrame)
     mapRuntimeSyncFrame = null
   }
+  if (mapDisplaySyncFrame !== null) {
+    window.cancelAnimationFrame(mapDisplaySyncFrame)
+    mapDisplaySyncFrame = null
+  }
+  if (markerAppearAnimationFrame !== null) {
+    window.cancelAnimationFrame(markerAppearAnimationFrame)
+    markerAppearAnimationFrame = null
+  }
   window.removeEventListener('focus', refreshVisibleMapSource)
+  window.removeEventListener('resize', handleWindowResize)
   document.removeEventListener('visibilitychange', refreshVisibleMapSource)
   mapRef.value?.remove()
 })
@@ -888,6 +1793,103 @@ onBeforeUnmount(() => {
 <template>
   <div class="map-stage">
     <div ref="mapEl" class="map-canvas" />
+
+    <div
+      v-if="hasActivePreview && !isMobileViewport"
+      class="map-preview-popover"
+      :class="previewSurfaceClass"
+      :style="desktopPreviewStyle"
+      role="dialog"
+      aria-modal="false"
+      :aria-label="previewListLabel"
+      @click.stop
+    >
+      <div
+        class="map-preview-list"
+        :class="{ 'is-loading': previewLoading }"
+      >
+        <p v-if="previewLoading" class="map-preview-state">{{ t('map.previewLoading') }}</p>
+        <p v-else-if="previewError" class="map-preview-state">{{ previewError }}</p>
+        <p v-else-if="!previewItems.length" class="map-preview-state">{{ t('map.previewEmpty') }}</p>
+        <template v-else>
+          <button
+            v-for="item in previewItems"
+            :key="item.id"
+            class="map-preview-item"
+            type="button"
+            @click="handlePreviewItemSelection(item.id)"
+          >
+            <span class="map-preview-item__thumb">
+              <img
+                v-if="item.thumbUrl"
+                :src="item.thumbUrl"
+                :alt="item.title || t('map.untitledPost')"
+                decoding="async"
+                loading="lazy"
+              >
+              <i v-else class="fa-solid fa-image" aria-hidden="true" />
+            </span>
+            <span class="map-preview-item__title">{{ item.title || t('map.untitledPost') }}</span>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <Transition name="map-preview-sheet">
+      <div
+        v-if="hasActivePreview && isMobileViewport"
+        class="map-preview-sheet-backdrop"
+        :class="previewSurfaceClass"
+        @click="handlePreviewDismissRequest"
+      >
+        <div
+          class="map-preview-sheet"
+          :class="[previewSurfaceClass, { 'is-dragging': previewSheetDragging }]"
+          :style="mobilePreviewSheetStyle"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="previewListLabel"
+          @click.stop
+        >
+          <div
+            class="map-preview-sheet__handle"
+            @pointerdown="handlePreviewSheetPointerDown"
+          >
+            <span />
+          </div>
+
+          <div class="map-preview-sheet__body">
+            <div class="map-preview-list">
+              <p v-if="previewLoading" class="map-preview-state">{{ t('map.previewLoading') }}</p>
+              <p v-else-if="previewError" class="map-preview-state">{{ previewError }}</p>
+              <p v-else-if="!previewItems.length" class="map-preview-state">{{ t('map.previewEmpty') }}</p>
+              <template v-else>
+                <button
+                  v-for="item in previewItems"
+                  :key="item.id"
+                  class="map-preview-item"
+                  type="button"
+                  @click="handlePreviewItemSelection(item.id)"
+                >
+                  <span class="map-preview-item__thumb">
+                    <img
+                      v-if="item.thumbUrl"
+                      :src="item.thumbUrl"
+                      :alt="item.title || t('map.untitledPost')"
+                      decoding="async"
+                      loading="lazy"
+                    >
+                    <i v-else class="fa-solid fa-image" aria-hidden="true" />
+                  </span>
+                  <span class="map-preview-item__title">{{ item.title || t('map.untitledPost') }}</span>
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <Transition name="map-loading-indicator">
       <div
         v-if="isMapLoading"
@@ -902,3 +1904,201 @@ onBeforeUnmount(() => {
     </Transition>
   </div>
 </template>
+
+<style scoped>
+.map-preview-popover {
+  position: absolute;
+  z-index: 30;
+  width: min(18rem, calc(100% - 1.5rem));
+  overflow: hidden;
+  border: 1px solid rgba(29, 23, 18, 0.12);
+  border-radius: 8px;
+  background: rgba(241, 240, 236, 0.94);
+  box-shadow: 0 18px 42px rgba(18, 14, 10, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+.map-preview-list {
+  display: grid;
+  gap: 0;
+  overflow-y: auto;
+  max-height: inherit;
+}
+
+.map-preview-item {
+  display: grid;
+  grid-template-columns: 4rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.9rem;
+  width: 100%;
+  padding: 0.9rem;
+  border: 0;
+  border-bottom: 1px solid rgba(29, 23, 18, 0.08);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  transition:
+    background-color 180ms var(--motion-smooth),
+    color 180ms var(--motion-smooth);
+}
+
+.map-preview-item:last-child {
+  border-bottom: 0;
+}
+
+.map-preview-item:hover,
+.map-preview-item:focus-visible {
+  background: rgba(22, 146, 95, 0.08);
+  color: var(--ink);
+  outline: 0;
+}
+
+.map-preview-item__thumb {
+  display: grid;
+  width: 4rem;
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(29, 23, 18, 0.08);
+  color: var(--ink-muted);
+}
+
+.map-preview-item__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.map-preview-item__title {
+  display: block;
+  min-width: 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.map-preview-state {
+  margin: 0;
+  padding: 1rem;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.map-preview-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(18, 16, 14, 0.18);
+  backdrop-filter: blur(4px);
+}
+
+.map-preview-sheet {
+  --preview-sheet-drag-offset: 0px;
+  --preview-sheet-enter-offset: 0px;
+  width: 100%;
+  max-height: min(70svh, 38rem);
+  border-top: 1px solid rgba(29, 23, 18, 0.08);
+  border-radius: 22px 22px 0 0;
+  background: rgba(241, 240, 236, 0.96);
+  box-shadow: 0 -18px 42px rgba(13, 11, 10, 0.16);
+  opacity: 1;
+  transform: translateY(var(--preview-sheet-enter-offset)) translateY(var(--preview-sheet-drag-offset));
+  transition:
+    transform 220ms var(--motion-smooth),
+    opacity 220ms var(--motion-smooth);
+}
+
+.map-preview-sheet.is-dragging {
+  transition: none;
+}
+
+.map-preview-sheet__handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.7rem 0 0.45rem;
+  touch-action: none;
+}
+
+.map-preview-sheet__handle span {
+  display: block;
+  width: 2.35rem;
+  height: 0.22rem;
+  border-radius: 999px;
+  background: rgba(29, 23, 18, 0.24);
+}
+
+.map-preview-sheet__body {
+  overflow: hidden;
+  padding-bottom: calc(0.9rem + env(safe-area-inset-bottom));
+}
+
+.map-preview-sheet__body .map-preview-list {
+  max-height: min(62svh, 34rem);
+}
+
+.map-preview-popover.is-dark {
+  border-color: rgba(136, 154, 166, 0.16);
+  background: rgba(12, 15, 17, 0.92);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+}
+
+.map-preview-popover.is-dark .map-preview-item,
+.map-preview-sheet.is-dark .map-preview-item {
+  border-bottom-color: rgba(136, 154, 166, 0.14);
+}
+
+.map-preview-popover.is-dark .map-preview-item:hover,
+.map-preview-popover.is-dark .map-preview-item:focus-visible,
+.map-preview-sheet.is-dark .map-preview-item:hover,
+.map-preview-sheet.is-dark .map-preview-item:focus-visible {
+  background: rgba(88, 199, 143, 0.1);
+}
+
+.map-preview-popover.is-dark .map-preview-item__thumb,
+.map-preview-sheet.is-dark .map-preview-item__thumb {
+  background: rgba(136, 154, 166, 0.14);
+}
+
+.map-preview-sheet-backdrop.is-dark {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.map-preview-sheet.is-dark {
+  border-top-color: rgba(136, 154, 166, 0.14);
+  background: rgba(31, 39, 46, 0.96);
+  box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.28);
+}
+
+.map-preview-sheet.is-dark .map-preview-sheet__handle span {
+  background: rgba(204, 215, 222, 0.28);
+}
+
+.map-preview-sheet-enter-active,
+.map-preview-sheet-leave-active {
+  transition:
+    opacity 220ms var(--motion-smooth),
+    backdrop-filter 220ms var(--motion-smooth);
+}
+
+.map-preview-sheet-enter-active .map-preview-sheet,
+.map-preview-sheet-leave-active .map-preview-sheet {
+  transition:
+    transform 220ms var(--motion-smooth),
+    opacity 220ms var(--motion-smooth);
+}
+
+.map-preview-sheet-enter-from,
+.map-preview-sheet-leave-to {
+  opacity: 0;
+}
+
+.map-preview-sheet-enter-from .map-preview-sheet,
+.map-preview-sheet-leave-to .map-preview-sheet {
+  --preview-sheet-enter-offset: 24px;
+  opacity: 0;
+}
+</style>

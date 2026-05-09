@@ -75,6 +75,10 @@
     "visibleCount": "当前视野内有 {count} 张已发布照片",
     "helper": "拖拽或缩放地图会按当前视野重新加载内容，点击图钉可在右侧查看详情。",
     "dataLoadFailed": "地图数据加载失败。",
+    "previewLoading": "正在加载点位列表…",
+    "previewEmpty": "这里暂时没有可预览的点位。",
+    "previewLoadFailed": "点位预览加载失败。",
+    "previewListLabel": "临近点位列表",
     "untitledPost": "未命名投稿",
     "taiwanProvinceLabel": "台湾省"
   },

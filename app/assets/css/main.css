@@ -40,7 +40,7 @@ html[data-theme="dark"] {
   --surface-strong: rgba(24, 20, 16, 0.95);
   --ink: #e2f5f1;
   --ink-soft: rgba(227, 206, 182, 0.8);
-  --ink-muted: rgba(201, 171, 139, 0.38);
+  --ink-muted: rgba(202, 202, 202, 0.696);
   --accent: #71d1cc;
   --accent-deep: #40aaa4;
   --teal: #7fd8d3;

@@ -75,6 +75,10 @@
     "visibleCount": "この表示範囲には公開済み写真が {count} 件あります",
     "helper": "地図を移動またはズームすると現在の表示範囲を再読み込みします。ピンをクリックすると右側に詳細が出ます。",
     "dataLoadFailed": "地図データの読み込みに失敗しました。",
+    "previewLoading": "近くの投稿を読み込み中…",
+    "previewEmpty": "ここには表示できる投稿がまだありません。",
+    "previewLoadFailed": "投稿プレビューの読み込みに失敗しました。",
+    "previewListLabel": "近くの投稿リスト",
     "untitledPost": "無題の投稿",
     "taiwanProvinceLabel": "台湾省"
   },
