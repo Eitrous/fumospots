@@ -59,7 +59,11 @@ type ScreenPointMember = {
   y: number
 }
 
-type ProjectedScreenPoint = {
+type CollisionNode = {
+  adjustedLng: number
+  collisionRadiusPx: number
+  lat: number
+  rawMembers: ScreenPointMember[]
   x: number
   y: number
 }
@@ -67,11 +71,10 @@ type ProjectedScreenPoint = {
 type DisplayClusterState = {
   bounds: [[number, number], [number, number]]
   center: [number, number]
-  globalPointCount: number
   key: string
   memberIds: number[]
   mode: 'zoom' | 'preview'
-  screenMembers: ProjectedScreenPoint[]
+  screenMembers: ScreenPointMember[]
   screenPoint: {
     x: number
     y: number
@@ -91,8 +94,8 @@ useMapResourceHints()
 
 const MOBILE_BREAKPOINT = 980
 const LOW_ZOOM_PMTILES_CACHE_MAX_ZOOM = 4
-const MAP_DISPLAY_PADDING_PX = 64
 const MAX_PREVIEW_FETCH_ITEMS = 100
+const CLUSTER_BUBBLE_STROKE_WIDTH_PX = 2
 const CLUSTER_ZOOM_FIT_DURATION_MS = 620
 const CLUSTER_ZOOM_BREAKOUT_MARGIN = 0.1
 const CLUSTER_ZOOM_BREAKOUT_STEP = 0.25
@@ -100,10 +103,9 @@ const CLUSTER_ZOOM_STEP = 0.85
 const MARKER_APPEAR_DURATION_MS = 240
 const MARKER_APPEAR_START_OPACITY = 0.62
 const MARKER_APPEAR_START_SCALE = 0.35
-const MOBILE_CLUSTER_PREVIEW_THRESHOLD_PX = 44
-const MOBILE_CLUSTER_RADIUS_BASE = 24
-const MOBILE_CLUSTER_RADIUS_MAX = 30
-const MOBILE_CLUSTER_RADIUS_MIN = 14
+const MARKER_COLLISION_GAP_PX = 4
+const POINT_MARKER_FILL_RADIUS_PX = 7
+const POINT_MARKER_OUTER_RADIUS_PX = POINT_MARKER_FILL_RADIUS_PX + CLUSTER_BUBBLE_STROKE_WIDTH_PX
 const PREVIEW_SHEET_CLOSE_THRESHOLD_PX = 92
 const REGION_FIT_DURATION_MS = 720
 const REGION_FIT_MAX_ZOOM = 10
@@ -112,10 +114,6 @@ const SELECTED_POST_FAR_FOCUS_DURATION_MS = 1450
 const SELECTED_POST_FOCUS_DURATION_MS = 1040
 const SELECTED_POST_FOCUS_MIN_ZOOM = 6.8
 const SELECTED_POST_FOCUS_OVERVIEW_ZOOM = 4.2
-const DESKTOP_CLUSTER_PREVIEW_THRESHOLD_PX = 36
-const DESKTOP_CLUSTER_RADIUS_BASE = 20
-const DESKTOP_CLUSTER_RADIUS_MAX = 26
-const DESKTOP_CLUSTER_RADIUS_MIN = 12
 const DESKTOP_PREVIEW_ANCHOR_GAP_PX = 20
 const DESKTOP_PREVIEW_MARGIN_PX = 12
 const DESKTOP_PREVIEW_OFFSET_PX = 14
@@ -713,24 +711,42 @@ const isAbortError = (error: unknown) => {
   return error instanceof Error && error.name === 'AbortError'
 }
 
-const getAdaptiveClusterRadius = (pointCount: number, zoom: number) => {
-  const isMobile = isMobileViewport.value
-  const densityFactor = clamp(
-    (pointCount - (isMobile ? 18 : 24)) / (isMobile ? 70 : 90),
-    0,
-    1
-  )
-  const densityBoost = densityFactor * (isMobile ? 10 : 8)
-  const zoomFactor = clamp((zoom - 2) / 10, 0, 1)
-  const radius = (isMobile ? MOBILE_CLUSTER_RADIUS_BASE : DESKTOP_CLUSTER_RADIUS_BASE)
-    + densityBoost
-    - (zoomFactor * (isMobile ? 10 : 8))
+const getClusterBubbleFillRadiusPx = (pointCount: number) => {
+  if (pointCount <= 1) {
+    return POINT_MARKER_FILL_RADIUS_PX
+  }
 
-  return clamp(
-    radius,
-    isMobile ? MOBILE_CLUSTER_RADIUS_MIN : DESKTOP_CLUSTER_RADIUS_MIN,
-    isMobile ? MOBILE_CLUSTER_RADIUS_MAX : DESKTOP_CLUSTER_RADIUS_MAX
-  )
+  const stops = [
+    [1, 11],
+    [8, 18],
+    [25, 28],
+    [70, 40],
+    [160, 54]
+  ] as const
+
+  if (pointCount <= stops[0][0]) {
+    return stops[0][1]
+  }
+
+  for (let index = 1; index < stops.length; index += 1) {
+    const [rightCount, rightRadius] = stops[index]
+    const [leftCount, leftRadius] = stops[index - 1]
+
+    if (pointCount <= rightCount) {
+      const progress = (pointCount - leftCount) / (rightCount - leftCount)
+      return leftRadius + ((rightRadius - leftRadius) * progress)
+    }
+  }
+
+  return stops[stops.length - 1][1]
+}
+
+const getDisplayedMarkerOuterRadiusPx = (pointCount: number) => {
+  if (pointCount <= 1) {
+    return POINT_MARKER_OUTER_RADIUS_PX
+  }
+
+  return getClusterBubbleFillRadiusPx(pointCount) + CLUSTER_BUBBLE_STROKE_WIDTH_PX
 }
 
 const collectVisiblePointMembers = () => {
@@ -772,19 +788,35 @@ const collectVisiblePointMembers = () => {
   return members
 }
 
-const clusterProjectedScreenPoints = <T extends ProjectedScreenPoint>(members: T[], radius: number) => {
-  if (!members.length) {
-    return [] as T[][]
+const createCollisionNodeFromRawMembers = (rawMembers: ScreenPointMember[]): CollisionNode => {
+  const memberCount = rawMembers.length
+
+  return {
+    adjustedLng: rawMembers.reduce((sum, member) => sum + member.adjustedLng, 0) / memberCount,
+    collisionRadiusPx: getDisplayedMarkerOuterRadiusPx(memberCount),
+    lat: rawMembers.reduce((sum, member) => sum + member.lat, 0) / memberCount,
+    rawMembers,
+    x: rawMembers.reduce((sum, member) => sum + member.x, 0) / memberCount,
+    y: rawMembers.reduce((sum, member) => sum + member.y, 0) / memberCount
+  }
+}
+
+const clusterCollisionNodes = (nodes: CollisionNode[], gapPx: number) => {
+  if (!nodes.length) {
+    return [] as CollisionNode[][]
   }
 
-  const radiusSquared = radius * radius
+  const maxCollisionDistance = nodes.reduce((maxDistance, node) => {
+    return Math.max(maxDistance, (node.collisionRadiusPx * 2) + gapPx)
+  }, 0)
+  const cellSize = Math.max(1, maxCollisionDistance)
   const cells = new Map<string, number[]>()
   const cellXByIndex: number[] = []
   const cellYByIndex: number[] = []
 
-  members.forEach((member, index) => {
-    const cellX = Math.floor(member.x / radius)
-    const cellY = Math.floor(member.y / radius)
+  nodes.forEach((node, index) => {
+    const cellX = Math.floor(node.x / cellSize)
+    const cellY = Math.floor(node.y / cellSize)
     const key = `${cellX}:${cellY}`
     const bucket = cells.get(key) || []
     bucket.push(index)
@@ -793,17 +825,17 @@ const clusterProjectedScreenPoints = <T extends ProjectedScreenPoint>(members: T
     cellYByIndex[index] = cellY
   })
 
-  const visited = new Array(members.length).fill(false)
-  const groups: T[][] = []
+  const visited = new Array(nodes.length).fill(false)
+  const groups: CollisionNode[][] = []
 
-  for (let index = 0; index < members.length; index += 1) {
+  for (let index = 0; index < nodes.length; index += 1) {
     if (visited[index]) {
       continue
     }
 
     visited[index] = true
     const queue = [index]
-    const group: ScreenPointMember[] = []
+    const group: CollisionNode[] = []
 
     while (queue.length) {
       const currentIndex = queue.pop()
@@ -811,7 +843,7 @@ const clusterProjectedScreenPoints = <T extends ProjectedScreenPoint>(members: T
         continue
       }
 
-      const current = members[currentIndex]
+      const current = nodes[currentIndex]
       group.push(current)
 
       for (let xOffset = -1; xOffset <= 1; xOffset += 1) {
@@ -826,11 +858,12 @@ const clusterProjectedScreenPoints = <T extends ProjectedScreenPoint>(members: T
               continue
             }
 
-            const candidate = members[candidateIndex]
+            const candidate = nodes[candidateIndex]
             const dx = candidate.x - current.x
             const dy = candidate.y - current.y
+            const collisionDistance = current.collisionRadiusPx + candidate.collisionRadiusPx + gapPx
 
-            if ((dx * dx) + (dy * dy) > radiusSquared) {
+            if ((dx * dx) + (dy * dy) >= (collisionDistance * collisionDistance)) {
               continue
             }
 
@@ -847,11 +880,46 @@ const clusterProjectedScreenPoints = <T extends ProjectedScreenPoint>(members: T
   return groups
 }
 
-const clusterVisiblePointMembers = (members: ScreenPointMember[], radius: number) => {
-  return clusterProjectedScreenPoints(members, radius)
+const mergeCollisionNodeGroup = (nodes: CollisionNode[]) => {
+  return createCollisionNodeFromRawMembers(nodes.flatMap(node => node.rawMembers))
 }
 
-const buildClusterState = (members: ScreenPointMember[], globalPointCount: number): DisplayClusterState => {
+const resolveDisplayCollisionGroups = (rawMembers: ScreenPointMember[]) => {
+  if (!rawMembers.length) {
+    return [] as ScreenPointMember[][]
+  }
+
+  let currentNodes = clusterCollisionNodes(
+    rawMembers.map(member => ({
+      adjustedLng: member.adjustedLng,
+      collisionRadiusPx: POINT_MARKER_OUTER_RADIUS_PX,
+      lat: member.lat,
+      rawMembers: [member],
+      x: member.x,
+      y: member.y
+    })),
+    MARKER_COLLISION_GAP_PX
+  ).map(group => group.length === 1 ? group[0] : mergeCollisionNodeGroup(group))
+
+  while (true) {
+    const nextGroups = clusterCollisionNodes(currentNodes, MARKER_COLLISION_GAP_PX)
+    if (nextGroups.every(group => group.length === 1)) {
+      return currentNodes.map(node => node.rawMembers)
+    }
+
+    currentNodes = nextGroups.map(group => group.length === 1 ? group[0] : mergeCollisionNodeGroup(group))
+  }
+}
+
+const scaleScreenPointMembers = (members: ScreenPointMember[], scale: number) => {
+  return members.map(member => ({
+    ...member,
+    x: member.x * scale,
+    y: member.y * scale
+  }))
+}
+
+const buildClusterState = (members: ScreenPointMember[]): DisplayClusterState => {
   const sortedIds = members
     .map(member => member.id)
     .slice()
@@ -866,15 +934,6 @@ const buildClusterState = (members: ScreenPointMember[], globalPointCount: numbe
   const minLat = Math.min(...members.map(member => member.lat))
   const maxLat = Math.max(...members.map(member => member.lat))
 
-  let maxSpreadPx = 0
-  for (let leftIndex = 0; leftIndex < members.length; leftIndex += 1) {
-    for (let rightIndex = leftIndex + 1; rightIndex < members.length; rightIndex += 1) {
-      const dx = members[leftIndex].x - members[rightIndex].x
-      const dy = members[leftIndex].y - members[rightIndex].y
-      maxSpreadPx = Math.max(maxSpreadPx, Math.sqrt((dx * dx) + (dy * dy)))
-    }
-  }
-
   const sameCoordinates = (
     Math.abs(maxAdjustedLng - minAdjustedLng) <= SAME_COORDINATE_EPSILON
     && Math.abs(maxLat - minLat) <= SAME_COORDINATE_EPSILON
@@ -882,10 +941,10 @@ const buildClusterState = (members: ScreenPointMember[], globalPointCount: numbe
 
   const mapMaxZoom = mapRef.value?.getMaxZoom() ?? 22
   const currentZoom = mapRef.value?.getZoom() ?? MAP_DEFAULT_ZOOM
-  const estimatedMaxSpreadPx = maxSpreadPx * Math.pow(2, Math.max(0, mapMaxZoom - currentZoom))
-  const previewThreshold = isMobileViewport.value
-    ? MOBILE_CLUSTER_PREVIEW_THRESHOLD_PX
-    : DESKTOP_CLUSTER_PREVIEW_THRESHOLD_PX
+  const scaleAtMaxZoom = Math.pow(2, Math.max(0, mapMaxZoom - currentZoom))
+  const simulatedMaxZoomGroups = resolveDisplayCollisionGroups(
+    scaleScreenPointMembers(members, scaleAtMaxZoom)
+  )
 
   return {
     bounds: [
@@ -893,14 +952,10 @@ const buildClusterState = (members: ScreenPointMember[], globalPointCount: numbe
       [normalizeLongitude(maxAdjustedLng), maxLat]
     ],
     center: [normalizeLongitude(centerAdjustedLng), centerLat],
-    globalPointCount,
     key,
     memberIds: sortedIds,
-    mode: sameCoordinates || estimatedMaxSpreadPx < previewThreshold ? 'preview' : 'zoom',
-    screenMembers: members.map(member => ({
-      x: member.x,
-      y: member.y
-    })),
+    mode: sameCoordinates || simulatedMaxZoomGroups.length < 2 ? 'preview' : 'zoom',
+    screenMembers: members.map(member => ({ ...member })),
     screenPoint: {
       x: centerX,
       y: centerY
@@ -932,8 +987,7 @@ const syncDisplaySource = () => {
     return
   }
 
-  const radius = getAdaptiveClusterRadius(visibleMembers.length, mapRef.value.getZoom())
-  const groups = clusterVisiblePointMembers(visibleMembers, radius)
+  const groups = resolveDisplayCollisionGroups(visibleMembers)
 
   for (const group of groups) {
     if (group.length === 1) {
@@ -953,7 +1007,7 @@ const syncDisplaySource = () => {
       continue
     }
 
-    const clusterState = buildClusterState(group, visibleMembers.length)
+    const clusterState = buildClusterState(group)
     const displayKey = `cluster:${clusterState.key}`
     const markerState = getMarkerAppearState(displayKey, now, !previousDisplayKeys.has(displayKey))
     nextDisplayKeys.add(displayKey)
@@ -1160,7 +1214,7 @@ const ensurePostLayers = () => {
         ],
         'circle-color': primaryColor,
         'circle-opacity': ['coalesce', ['get', 'marker_opacity'], 1],
-        'circle-stroke-width': 2,
+        'circle-stroke-width': CLUSTER_BUBBLE_STROKE_WIDTH_PX,
         'circle-stroke-color': contrastColor,
         'circle-stroke-opacity': ['coalesce', ['get', 'marker_opacity'], 1]
       }
@@ -1192,10 +1246,10 @@ const ensurePostLayers = () => {
       source: sourceName,
       filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-radius': ['*', ['coalesce', ['get', 'marker_scale'], 1], 7],
+        'circle-radius': ['*', ['coalesce', ['get', 'marker_scale'], 1], POINT_MARKER_FILL_RADIUS_PX],
         'circle-color': primaryColor,
         'circle-opacity': ['coalesce', ['get', 'marker_opacity'], 1],
-        'circle-stroke-width': 2,
+        'circle-stroke-width': CLUSTER_BUBBLE_STROKE_WIDTH_PX,
         'circle-stroke-color': contrastColor,
         'circle-stroke-opacity': ['coalesce', ['get', 'marker_opacity'], 1]
       }
@@ -1327,10 +1381,7 @@ const zoomToClusterState = (clusterState: DisplayClusterState) => {
 
   const currentZoom = mapRef.value.getZoom()
   const maxZoom = mapRef.value.getMaxZoom() - 0.75
-  const minimumTargetZoom = Math.min(
-    maxZoom,
-    currentZoom + CLUSTER_ZOOM_STEP
-  )
+  const minimumTargetZoom = Math.min(maxZoom, currentZoom + CLUSTER_ZOOM_BREAKOUT_STEP)
 
   let breakoutZoom: number | null = null
   for (
@@ -1339,12 +1390,9 @@ const zoomToClusterState = (clusterState: DisplayClusterState) => {
     targetZoom += CLUSTER_ZOOM_BREAKOUT_STEP
   ) {
     const scale = Math.pow(2, targetZoom - currentZoom)
-    const simulatedMembers = clusterState.screenMembers.map((member) => ({
-      x: member.x * scale,
-      y: member.y * scale
-    }))
-    const radius = getAdaptiveClusterRadius(clusterState.globalPointCount, targetZoom)
-    const simulatedGroups = clusterProjectedScreenPoints(simulatedMembers, radius)
+    const simulatedGroups = resolveDisplayCollisionGroups(
+      scaleScreenPointMembers(clusterState.screenMembers, scale)
+    )
 
     if (simulatedGroups.length > 1) {
       breakoutZoom = Math.min(maxZoom, targetZoom + CLUSTER_ZOOM_BREAKOUT_MARGIN)
@@ -1352,7 +1400,7 @@ const zoomToClusterState = (clusterState: DisplayClusterState) => {
     }
   }
 
-  let targetZoom = breakoutZoom ?? minimumTargetZoom
+  let targetZoom = breakoutZoom ?? Math.min(maxZoom, currentZoom + CLUSTER_ZOOM_STEP)
   const padding = getClusterBreakoutPadding()
   const camera = mapRef.value.cameraForBounds(clusterState.bounds, { padding })
   const fitCenter = camera.center ?? clusterState.center
