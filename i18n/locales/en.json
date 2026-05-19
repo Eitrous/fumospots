@@ -72,6 +72,7 @@
   },
   "map": {
     "loading": "Opening the map…",
+    "loadFallbackHint": "If you can see this,\nthe map has not loaded yet.\nPlease try refreshing.",
     "visibleCount": "{count} published photo(s) are visible in this view",
     "helper": "Pan or zoom to reload the current viewport, then click a marker to open details on the right.",
     "dataLoadFailed": "Failed to load map data.",

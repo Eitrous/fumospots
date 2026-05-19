@@ -528,6 +528,22 @@ button {
   min-height: 100vh;
 }
 
+.map-background-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 1.5rem;
+  color: rgba(58, 64, 92, 0.72);
+  font-size: 0.98rem;
+  line-height: 1.75;
+  text-align: center;
+  white-space: pre-line;
+  pointer-events: none;
+}
+
 .map-canvas,
 .picker-canvas {
   width: 100%;
@@ -535,6 +551,8 @@ button {
 }
 
 .map-canvas {
+  position: relative;
+  z-index: 1;
   min-height: 100vh;
 }
 
@@ -571,6 +589,10 @@ html[data-theme="dark"] .map-loading-indicator {
   border-color: rgba(136, 154, 166, 0.16);
   background: rgba(31, 39, 46, 0.78);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
+}
+
+html[data-theme="dark"] .map-background-hint {
+  color: rgba(202, 202, 202, 0.74);
 }
 
 .maplibregl-ctrl-attrib {

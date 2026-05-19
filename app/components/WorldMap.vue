@@ -1840,6 +1840,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="map-stage">
+    <div
+      class="map-background-hint"
+      aria-hidden="true"
+    >
+      {{ t('map.loadFallbackHint') }}
+    </div>
+
     <div ref="mapEl" class="map-canvas" />
 
     <div
