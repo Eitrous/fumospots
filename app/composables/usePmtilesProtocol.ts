@@ -19,6 +19,7 @@ type PmtilesProtocolState = {
   archives: Map<string, PmtilesArchive>
   completedLowZoomWarmups: Set<string>
   activeLowZoomWarmups: Map<string, Promise<void>>
+  generation: number
 }
 
 type NavigatorWithConnection = Navigator & {
@@ -50,7 +51,8 @@ const getPmtilesProtocolState = () => {
       modulePromise: null,
       archives: new Map(),
       completedLowZoomWarmups: new Set(),
-      activeLowZoomWarmups: new Map()
+      activeLowZoomWarmups: new Map(),
+      generation: 0
     }
   }
 
@@ -195,6 +197,27 @@ export const registerPmtilesProtocol = async (
   state.registered = true
 }
 
+export const resetPmtilesProtocol = async (
+  maplibregl: typeof import('maplibre-gl')
+) => {
+  const state = getPmtilesProtocolState()
+
+  state.generation += 1
+  state.protocol = null
+  state.registered = false
+  state.archives.clear()
+  state.completedLowZoomWarmups.clear()
+  state.activeLowZoomWarmups.clear()
+
+  try {
+    maplibregl.removeProtocol('pmtiles')
+  } catch {
+    // The protocol may not have been registered in this MapLibre instance.
+  }
+
+  await registerPmtilesProtocol(maplibregl)
+}
+
 export const warmLowZoomPmtilesCache = (
   pmtilesUrl: string,
   options: {
@@ -213,7 +236,8 @@ export const warmLowZoomPmtilesCache = (
 
   const maxZoom = Math.max(0, Math.floor(options.maxZoom ?? 4))
   const state = getPmtilesProtocolState()
-  const cacheKey = `${normalizedUrl}::z${maxZoom}`
+  const generation = state.generation
+  const cacheKey = `${generation}:${normalizedUrl}::z${maxZoom}`
 
   if (state.completedLowZoomWarmups.has(cacheKey)) {
     return Promise.resolve()
@@ -249,17 +273,23 @@ export const warmLowZoomPmtilesCache = (
       }))
     }
 
-    state.completedLowZoomWarmups.add(cacheKey)
+    if (state.generation === generation) {
+      state.completedLowZoomWarmups.add(cacheKey)
+    }
   })()
     .catch((error) => {
       if (isAbortError(error)) {
         throw error
       }
 
-      state.completedLowZoomWarmups.add(cacheKey)
+      if (state.generation === generation) {
+        state.completedLowZoomWarmups.add(cacheKey)
+      }
     })
     .finally(() => {
-      state.activeLowZoomWarmups.delete(cacheKey)
+      if (state.generation === generation) {
+        state.activeLowZoomWarmups.delete(cacheKey)
+      }
     })
 
   state.activeLowZoomWarmups.set(cacheKey, warmup)

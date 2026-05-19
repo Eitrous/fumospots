@@ -385,24 +385,165 @@ watch(
 </script>
 
 <template>
-  <main class="page-shell">
-    <section class="panel panel--page">
-      <span class="eyebrow">Admin Review</span>
-      <h1 class="page-title">审核待发布内容</h1>
-      <p class="lede">左侧选择项目，右侧查看原图、位置、作者和备注。</p>
+  <main class="admin-shell admin-review-page">
+    <section class="admin-page-head">
+      <div>
+        <h1 class="admin-page-title">审核台</h1>
+        <p class="admin-page-kicker">
+          {{ loading ? '待审核内容加载中' : `待审核 ${posts.length} 项` }}
+        </p>
+      </div>
+
+      <button
+        class="admin-icon-button"
+        type="button"
+        :disabled="loading || submitting"
+        :title="loading ? '正在刷新' : '刷新待审核内容'"
+        :aria-label="loading ? '正在刷新' : '刷新待审核内容'"
+        @click="loadPosts"
+      >
+        <i
+          class="button-icon fa-solid"
+          :class="loading ? 'fa-spinner fa-spin' : 'fa-rotate-right'"
+          aria-hidden="true"
+        />
+        <span class="sr-only">刷新待审核内容</span>
+      </button>
     </section>
 
-    <section class="panel panel--page admin-migration-tool">
-      <div class="admin-migration-tool__head">
-        <div class="admin-migration-tool__copy">
-          <span class="eyebrow">Maintenance</span>
-          <h2 class="admin-migration-tool__title">手动地区回填</h2>
-          <p class="support-copy">这里只显示已发布且从未产生过修改记录的原稿，管理员逐条补全地区字段。</p>
+    <section class="review-layout admin-main-review">
+      <aside class="admin-panel review-list">
+        <template v-if="loading">
+          <span class="admin-status">正在加载待审核内容...</span>
+        </template>
+
+        <template v-else-if="posts.length">
+          <button
+            v-for="post in posts"
+            :key="post.reviewKey"
+            :class="{ 'is-active': selectedKey === post.reviewKey }"
+            type="button"
+            @click="selectedKey = post.reviewKey"
+          >
+            <strong>{{ post.title }}</strong>
+            <p>@{{ post.author.username }}</p>
+            <p>{{ post.reviewKind === 'revision' ? '修改审核' : '新投稿' }}</p>
+            <p>{{ post.placeName || '未填写地点' }}</p>
+            <p>{{ formatDateTime(post.createdAt) }}</p>
+          </button>
+        </template>
+
+        <div v-else class="empty-state">
+          <h2>现在没有待审核内容</h2>
+          <p>新投稿或作品修改进入队列后会出现在这里。</p>
+        </div>
+      </aside>
+
+      <section class="admin-panel review-detail admin-detail-panel">
+        <template v-if="selectedPost">
+          <div v-if="selectedReviewPhoto?.imageUrl" class="review-detail__hero">
+            <img :src="selectedReviewPhoto.imageUrl" :alt="selectedPost.title">
+          </div>
+
+          <div v-if="selectedReviewPhotos.length > 1" class="photo-strip photo-strip--review" aria-label="Review photos">
+            <button
+              v-for="(photo, index) in selectedReviewPhotos"
+              :key="`${selectedPost.reviewKey}-${index}`"
+              class="photo-strip__button"
+              :class="{ 'is-active': selectedPhotoIndex === index }"
+              type="button"
+              :aria-label="`查看第 ${index + 1} 张照片`"
+              @click="selectPhoto(index)"
+            >
+              <img v-if="photo.thumbUrl || photo.imageUrl" :src="photo.thumbUrl || photo.imageUrl || ''" :alt="selectedPost.title">
+              <i v-else class="fa-solid fa-image" aria-hidden="true" />
+            </button>
+          </div>
+
+          <span class="admin-overline">{{ selectedReviewTypeLabel }} #{{ selectedPost.id }}</span>
+          <h2>{{ selectedPost.title }}</h2>
+          <div class="detail-meta admin-meta-row">
+            <span class="admin-meta-item">@{{ selectedPost.author.username }}</span>
+            <span class="admin-meta-item">{{ selectedPost.placeName || '未命名地点' }}</span>
+            <span class="admin-meta-item">{{ privacyModeLabel(selectedPost.privacyMode) }}</span>
+          </div>
+
+          <p class="admin-copy">{{ selectedPost.body || '作者没有留下额外备注。' }}</p>
+
+          <div class="field-grid field-grid--two">
+            <div class="review-info-block">
+              <strong>坐标</strong>
+              <p class="admin-copy">精确位置：{{ formatLatLng(selectedPost.exactLocation) }}</p>
+              <p class="admin-copy">公开位置：{{ formatLatLng(selectedPost.publicLocation) }}</p>
+              <p class="admin-copy">拍摄时间：{{ formatDateTime(selectedPost.capturedAt) }}</p>
+            </div>
+
+            <div class="review-info-block">
+              <strong>位置预览</strong>
+              <LocationPreviewMap
+                :exact-location="selectedPost.exactLocation"
+                :public-location="selectedPost.publicLocation"
+                :show-exact="true"
+                :compact="true"
+              />
+            </div>
+          </div>
+
+          <label class="field-label">
+            <span>审核备注</span>
+            <textarea
+              v-model="reviewNote"
+              class="field-textarea"
+              placeholder="写给作者或管理员内部查看的备注"
+            />
+          </label>
+
+          <div class="inline-actions admin-action-row">
+            <button
+              class="admin-icon-button admin-icon-button--primary"
+              type="button"
+              :disabled="submitting"
+              title="通过"
+              aria-label="通过"
+              @click="submitReview('approve')"
+            >
+              <i class="button-icon fa-solid" :class="submitting ? 'fa-spinner fa-spin' : 'fa-check'" aria-hidden="true" />
+              <span class="sr-only">通过</span>
+            </button>
+            <button
+              class="admin-icon-button admin-icon-button--danger"
+              type="button"
+              :disabled="submitting"
+              title="驳回"
+              aria-label="驳回"
+              @click="submitReview('reject')"
+            >
+              <i class="button-icon fa-solid fa-xmark" aria-hidden="true" />
+              <span class="sr-only">驳回</span>
+            </button>
+          </div>
+        </template>
+
+        <div v-else class="empty-state">
+          <h2>从左侧选择一条内容</h2>
+          <p>通过后进入公开地图；驳回则保留在后台记录。</p>
         </div>
 
-        <div class="inline-actions">
+        <p v-if="feedbackMessage" class="success-banner">{{ feedbackMessage }}</p>
+        <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
+      </section>
+    </section>
+
+    <section class="admin-maintenance-section">
+      <div class="admin-section-head">
+        <div>
+          <h2 class="admin-section-title">地区回填</h2>
+          <p class="admin-page-kicker">已发布原稿的 country / region / city 维护。</p>
+        </div>
+
+        <div class="inline-actions admin-action-row">
           <button
-            class="workbench-icon-button"
+            class="admin-icon-button"
             type="button"
             :disabled="locationBackfillStatsLoading || locationBackfillLoading || locationBackfillSaving"
             title="刷新地区回填队列"
@@ -418,7 +559,7 @@ watch(
           </button>
 
           <button
-            class="workbench-icon-button workbench-icon-button--primary"
+            class="admin-icon-button admin-icon-button--primary"
             type="button"
             :disabled="backfillSaveDisabled"
             title="保存地区字段"
@@ -441,7 +582,7 @@ watch(
           <strong>{{ locationBackfillStatsLoading ? '...' : (locationBackfillStats?.totals.eligiblePosts ?? '-') }}</strong>
         </p>
         <p>
-          <span>当前已载入</span>
+          <span>当前载入</span>
           <strong>{{ locationBackfillLoading ? '...' : locationBackfillItems.length }}</strong>
         </p>
         <p>
@@ -451,9 +592,9 @@ watch(
       </div>
 
       <section class="review-layout review-layout--backfill">
-        <aside class="panel panel--page review-list backfill-list">
+        <aside class="admin-panel review-list backfill-list">
           <template v-if="locationBackfillLoading">
-            <span class="status-inline">正在加载地区回填队列...</span>
+            <span class="admin-status">正在加载地区回填队列...</span>
           </template>
 
           <template v-else-if="locationBackfillItems.length">
@@ -478,7 +619,7 @@ watch(
           </div>
         </aside>
 
-        <section class="panel panel--page review-detail backfill-detail">
+        <section class="admin-panel review-detail backfill-detail admin-detail-panel">
           <template v-if="selectedBackfillItem">
             <div v-if="selectedBackfillPhoto?.imageUrl" class="review-detail__hero">
               <img :src="selectedBackfillPhoto.imageUrl" :alt="selectedBackfillItem.title">
@@ -507,23 +648,23 @@ watch(
               </button>
             </div>
 
-            <span class="eyebrow">Location Backfill #{{ selectedBackfillItem.id }}</span>
+            <span class="admin-overline">回填 #{{ selectedBackfillItem.id }}</span>
             <h2>{{ selectedBackfillItem.title }}</h2>
-            <div class="detail-meta">
-              <span class="status-inline">@{{ selectedBackfillItem.author.username }}</span>
-              <span class="status-inline">{{ selectedBackfillItem.placeName || '未命名地点' }}</span>
-              <span class="status-inline">{{ privacyModeLabel(selectedBackfillItem.privacyMode) }}</span>
+            <div class="detail-meta admin-meta-row">
+              <span class="admin-meta-item">@{{ selectedBackfillItem.author.username }}</span>
+              <span class="admin-meta-item">{{ selectedBackfillItem.placeName || '未命名地点' }}</span>
+              <span class="admin-meta-item">{{ privacyModeLabel(selectedBackfillItem.privacyMode) }}</span>
             </div>
 
-            <p class="support-copy">{{ selectedBackfillItem.body || '作者没有留下额外文字。' }}</p>
+            <p class="admin-copy">{{ selectedBackfillItem.body || '作者没有留下额外文字。' }}</p>
 
             <div class="field-grid field-grid--two">
               <div class="review-info-block">
                 <strong>坐标与时间</strong>
-                <p class="support-copy">精确位置：{{ formatLatLng(selectedBackfillItem.exactLocation) }}</p>
-                <p class="support-copy">公开位置：{{ formatLatLng(selectedBackfillItem.publicLocation) }}</p>
-                <p class="support-copy">拍摄时间：{{ formatDateTime(selectedBackfillItem.capturedAt) }}</p>
-                <p class="support-copy">提交时间：{{ formatDateTime(selectedBackfillItem.createdAt) }}</p>
+                <p class="admin-copy">精确位置：{{ formatLatLng(selectedBackfillItem.exactLocation) }}</p>
+                <p class="admin-copy">公开位置：{{ formatLatLng(selectedBackfillItem.publicLocation) }}</p>
+                <p class="admin-copy">拍摄时间：{{ formatDateTime(selectedBackfillItem.capturedAt) }}</p>
+                <p class="admin-copy">提交时间：{{ formatDateTime(selectedBackfillItem.createdAt) }}</p>
               </div>
 
               <div class="review-info-block">
@@ -569,8 +710,8 @@ watch(
               >
             </label>
 
-            <p class="support-copy backfill-detail__hint">
-              保存时会把空字符串写成空值，只更新当前原稿的 `country / region / city`。
+            <p class="backfill-detail__hint">
+              仅更新当前原稿的 country / region / city，地区必填。
             </p>
           </template>
 
@@ -579,133 +720,10 @@ watch(
             <p>保存后当前条目会从队列移除，并自动切到下一条。</p>
           </div>
 
-          <p v-if="locationBackfillLoadingMore" class="status-inline">正在加载更多候选...</p>
+          <p v-if="locationBackfillLoadingMore" class="admin-status">正在加载更多候选...</p>
           <p v-if="locationBackfillFeedbackMessage" class="success-banner">{{ locationBackfillFeedbackMessage }}</p>
           <p v-if="locationBackfillErrorMessage" class="error-banner">{{ locationBackfillErrorMessage }}</p>
         </section>
-      </section>
-    </section>
-
-    <section class="review-layout">
-      <aside class="panel panel--page review-list">
-        <template v-if="loading">
-          <span class="status-inline">正在加载待审核内容...</span>
-        </template>
-
-        <template v-else-if="posts.length">
-          <button
-            v-for="post in posts"
-            :key="post.reviewKey"
-            :class="{ 'is-active': selectedKey === post.reviewKey }"
-            type="button"
-            @click="selectedKey = post.reviewKey"
-          >
-            <strong>{{ post.title }}</strong>
-            <p>@{{ post.author.username }}</p>
-            <p>{{ post.reviewKind === 'revision' ? '修改审核' : '新投稿' }}</p>
-            <p>{{ post.placeName || '未填写地点' }}</p>
-            <p>{{ formatDateTime(post.createdAt) }}</p>
-          </button>
-        </template>
-
-        <div v-else class="empty-state">
-          <h2>现在没有待审核内容</h2>
-          <p>新投稿或作品修改进入队列后会出现在这里。</p>
-        </div>
-      </aside>
-
-      <section class="panel panel--page review-detail">
-        <template v-if="selectedPost">
-          <div v-if="selectedReviewPhoto?.imageUrl" class="review-detail__hero">
-            <img :src="selectedReviewPhoto.imageUrl" :alt="selectedPost.title">
-          </div>
-
-          <div v-if="selectedReviewPhotos.length > 1" class="photo-strip photo-strip--review" aria-label="Review photos">
-            <button
-              v-for="(photo, index) in selectedReviewPhotos"
-              :key="`${selectedPost.reviewKey}-${index}`"
-              class="photo-strip__button"
-              :class="{ 'is-active': selectedPhotoIndex === index }"
-              type="button"
-              :aria-label="`查看第 ${index + 1} 张照片`"
-              @click="selectPhoto(index)"
-            >
-              <img v-if="photo.thumbUrl || photo.imageUrl" :src="photo.thumbUrl || photo.imageUrl || ''" :alt="selectedPost.title">
-              <i v-else class="fa-solid fa-image" aria-hidden="true" />
-            </button>
-          </div>
-
-          <span class="eyebrow">{{ selectedReviewTypeLabel }} #{{ selectedPost.id }}</span>
-          <h2>{{ selectedPost.title }}</h2>
-          <div class="detail-meta">
-            <span class="status-inline">@{{ selectedPost.author.username }}</span>
-            <span class="status-inline">{{ selectedPost.placeName || '未命名地点' }}</span>
-            <span class="status-inline">{{ privacyModeLabel(selectedPost.privacyMode) }}</span>
-          </div>
-
-          <p class="support-copy">{{ selectedPost.body || '作者没有留下额外备注。' }}</p>
-
-          <div class="field-grid field-grid--two">
-            <div class="review-info-block">
-              <strong>坐标</strong>
-              <p class="support-copy">精确位置：{{ formatLatLng(selectedPost.exactLocation) }}</p>
-              <p class="support-copy">公开位置：{{ formatLatLng(selectedPost.publicLocation) }}</p>
-              <p class="support-copy">拍摄时间：{{ formatDateTime(selectedPost.capturedAt) }}</p>
-            </div>
-
-            <div class="review-info-block">
-              <strong>位置预览</strong>
-              <LocationPreviewMap
-                :exact-location="selectedPost.exactLocation"
-                :public-location="selectedPost.publicLocation"
-                :show-exact="true"
-                :compact="true"
-              />
-            </div>
-          </div>
-
-          <label class="field-label">
-            <span>审核备注</span>
-            <textarea
-              v-model="reviewNote"
-              class="field-textarea"
-              placeholder="写给作者或管理员内部查看的备注"
-            />
-          </label>
-
-          <div class="inline-actions">
-            <button
-              class="workbench-icon-button workbench-icon-button--primary"
-              type="button"
-              :disabled="submitting"
-              title="通过"
-              aria-label="通过"
-              @click="submitReview('approve')"
-            >
-              <i class="button-icon fa-solid" :class="submitting ? 'fa-spinner fa-spin' : 'fa-check'" aria-hidden="true" />
-              <span class="sr-only">通过</span>
-            </button>
-            <button
-              class="workbench-icon-button workbench-icon-button--danger"
-              type="button"
-              :disabled="submitting"
-              title="驳回"
-              aria-label="驳回"
-              @click="submitReview('reject')"
-            >
-              <i class="button-icon fa-solid fa-xmark" aria-hidden="true" />
-              <span class="sr-only">驳回</span>
-            </button>
-          </div>
-        </template>
-
-        <div v-else class="empty-state">
-          <h2>从左侧选择一条内容</h2>
-          <p>通过后进入公开地图；驳回则保留在后台记录。</p>
-        </div>
-
-        <p v-if="feedbackMessage" class="success-banner">{{ feedbackMessage }}</p>
-        <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
       </section>
     </section>
   </main>
@@ -726,11 +744,10 @@ watch(
 
 .backfill-detail__hint {
   margin: 0;
-  padding-top: 0.9rem;
-  border-top: 1px solid rgba(29, 23, 18, 0.08);
-}
-
-html[data-theme="dark"] .backfill-detail__hint {
-  border-color: var(--border);
+  padding-top: 0.75rem;
+  border-top: 1px solid #dedede;
+  color: #666;
+  font-size: 0.9rem;
+  line-height: 1.6;
 }
 </style>

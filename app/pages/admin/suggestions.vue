@@ -53,36 +53,33 @@ watch(
 </script>
 
 <template>
-  <main class="page-shell">
-    <section class="panel panel--page">
-      <span class="eyebrow">Admin Suggestions</span>
-      <h1 class="page-title">用户建议</h1>
-      <p class="lede">仅管理员可见，按提交时间倒序展示。</p>
-    </section>
-
-    <section class="panel panel--page admin-suggestion-panel">
-      <div class="admin-suggestion-panel__head">
-        <p class="status-inline">
-          {{ loading ? '正在加载建议…' : `共 ${suggestions.length} 条建议` }}
+  <main class="admin-shell admin-suggestions-page">
+    <section class="admin-page-head">
+      <div>
+        <h1 class="admin-page-title">用户建议</h1>
+        <p class="admin-page-kicker">
+          {{ loading ? '正在加载建议' : `共 ${suggestions.length} 条建议` }}
         </p>
-
-        <button
-          class="workbench-icon-button"
-          type="button"
-          :title="loading ? '正在刷新' : '刷新建议列表'"
-          :aria-label="loading ? '正在刷新' : '刷新建议列表'"
-          :disabled="loading"
-          @click="loadSuggestions"
-        >
-          <i
-            class="button-icon fa-solid"
-            :class="loading ? 'fa-spinner fa-spin' : 'fa-rotate-right'"
-            aria-hidden="true"
-          />
-          <span class="sr-only">刷新建议列表</span>
-        </button>
       </div>
 
+      <button
+        class="admin-icon-button"
+        type="button"
+        :title="loading ? '正在刷新' : '刷新建议列表'"
+        :aria-label="loading ? '正在刷新' : '刷新建议列表'"
+        :disabled="loading"
+        @click="loadSuggestions"
+      >
+        <i
+          class="button-icon fa-solid"
+          :class="loading ? 'fa-spinner fa-spin' : 'fa-rotate-right'"
+          aria-hidden="true"
+        />
+        <span class="sr-only">刷新建议列表</span>
+      </button>
+    </section>
+
+    <section class="admin-panel admin-suggestion-panel">
       <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
 
       <ul v-else-if="suggestions.length" class="admin-suggestion-list">
@@ -100,7 +97,8 @@ watch(
         </li>
       </ul>
 
-      <p v-else-if="!loading" class="status-inline">暂无建议。</p>
+      <p v-else-if="!loading" class="admin-status">暂无建议。</p>
+      <p v-else class="admin-status">正在加载建议...</p>
     </section>
   </main>
 </template>

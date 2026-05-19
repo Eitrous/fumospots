@@ -94,7 +94,20 @@ useMapResourceHints()
 
 const MOBILE_BREAKPOINT = 980
 const LOW_ZOOM_PMTILES_CACHE_MAX_ZOOM = 4
+const MAP_BASE_SOURCE_NAME = 'protomaps'
 const MAX_PREVIEW_FETCH_ITEMS = 100
+const BASEMAP_HEALTH_CHECK_DELAY_MS = 4200
+const BASEMAP_HEALTH_CONFIRM_DELAY_MS = 220
+const BASEMAP_RECOVERY_MAX_ATTEMPTS = 3
+const BASEMAP_RECOVERY_RETRY_DELAYS_MS = [600, 1800, 4200] as const
+const BASEMAP_PROBE_LAYER_IDS = [
+  'earth',
+  'water',
+  'landuse_park',
+  'roads_major',
+  'boundaries_country',
+  'places_country'
+] as const
 const CLUSTER_BUBBLE_STROKE_WIDTH_PX = 2
 const CLUSTER_ZOOM_FIT_DURATION_MS = 620
 const CLUSTER_ZOOM_BREAKOUT_MARGIN = 0.1
@@ -245,6 +258,10 @@ let mapResizeFrame: number | null = null
 let mapRuntimeSyncFrame: number | null = null
 let mapDisplaySyncFrame: number | null = null
 let markerAppearAnimationFrame: number | null = null
+let baseMapHealthCheckTimer: number | null = null
+let baseMapRecoveryTimer: number | null = null
+let baseMapReady = false
+let baseMapRecoveryAttempts = 0
 let lowZoomWarmupAbortController: AbortController | null = null
 let pendingStyleSourceRefresh = false
 let previewSheetPointerId: number | null = null
@@ -454,6 +471,76 @@ const startMapLoading = () => {
 
 const finishMapLoading = () => {
   mapLoadingRequests.value = Math.max(0, mapLoadingRequests.value - 1)
+}
+
+const clearBaseMapHealthCheckTimer = () => {
+  if (!import.meta.client || baseMapHealthCheckTimer === null) {
+    return
+  }
+
+  window.clearTimeout(baseMapHealthCheckTimer)
+  baseMapHealthCheckTimer = null
+}
+
+const clearBaseMapRecoveryTimer = () => {
+  if (!import.meta.client || baseMapRecoveryTimer === null) {
+    return
+  }
+
+  window.clearTimeout(baseMapRecoveryTimer)
+  baseMapRecoveryTimer = null
+}
+
+const prepareBaseMapForStyleLoad = (options: { resetAttempts?: boolean } = {}) => {
+  baseMapReady = false
+  clearBaseMapHealthCheckTimer()
+  clearBaseMapRecoveryTimer()
+
+  if (options.resetAttempts !== false) {
+    baseMapRecoveryAttempts = 0
+  }
+}
+
+const getExistingBaseMapProbeLayers = () => {
+  if (!mapRef.value) {
+    return []
+  }
+
+  return BASEMAP_PROBE_LAYER_IDS.filter(layerId => Boolean(mapRef.value?.getLayer(layerId)))
+}
+
+const hasRenderedBaseMapFeatures = () => {
+  if (!mapRef.value || !mapRef.value.isStyleLoaded()) {
+    return false
+  }
+
+  const layers = getExistingBaseMapProbeLayers()
+  if (!layers.length) {
+    return false
+  }
+
+  try {
+    return mapRef.value.queryRenderedFeatures({ layers }).length > 0
+  } catch {
+    return false
+  }
+}
+
+const markBaseMapReadyIfVisible = () => {
+  if (baseMapReady) {
+    return true
+  }
+
+  if (!hasRenderedBaseMapFeatures()) {
+    return false
+  }
+
+  baseMapReady = true
+  baseMapRecoveryAttempts = 0
+  clearBaseMapHealthCheckTimer()
+  clearBaseMapRecoveryTimer()
+  scheduleLowZoomMapWarmup()
+  return true
 }
 
 const getFeaturePostId = (raw: Record<string, unknown> | null | undefined) => {
@@ -1473,6 +1560,14 @@ const handleMapClick = async (event: MapMouseEvent) => {
   emit('select-post', postId)
 }
 
+const handleMarkerMouseEnter = () => {
+  mapRef.value?.getCanvas().style.setProperty('cursor', 'pointer')
+}
+
+const handleMarkerMouseLeave = () => {
+  mapRef.value?.getCanvas().style.setProperty('cursor', '')
+}
+
 const bindMapInteractions = () => {
   if (!mapRef.value || mapInteractionsBound) {
     return
@@ -1480,26 +1575,32 @@ const bindMapInteractions = () => {
 
   mapInteractionsBound = true
 
-  mapRef.value.on('mouseenter', 'clusters', () => {
-    mapRef.value?.getCanvas().style.setProperty('cursor', 'pointer')
-  })
-
-  mapRef.value.on('mouseleave', 'clusters', () => {
-    mapRef.value?.getCanvas().style.setProperty('cursor', '')
-  })
-
-  mapRef.value.on('mouseenter', 'unclustered-point', () => {
-    mapRef.value?.getCanvas().style.setProperty('cursor', 'pointer')
-  })
-
-  mapRef.value.on('mouseleave', 'unclustered-point', () => {
-    mapRef.value?.getCanvas().style.setProperty('cursor', '')
-  })
+  mapRef.value.on('mouseenter', 'clusters', handleMarkerMouseEnter)
+  mapRef.value.on('mouseleave', 'clusters', handleMarkerMouseLeave)
+  mapRef.value.on('mouseenter', 'unclustered-point', handleMarkerMouseEnter)
+  mapRef.value.on('mouseleave', 'unclustered-point', handleMarkerMouseLeave)
 
   mapRef.value.on('click', handleMapClick)
   mapRef.value.on('dragstart', closeActivePreview)
   mapRef.value.on('zoomstart', closeActivePreview)
   mapRef.value.on('zoomend', scheduleDisplaySourceSync)
+}
+
+const unbindMapInteractions = () => {
+  if (!mapRef.value || !mapInteractionsBound) {
+    return
+  }
+
+  mapRef.value.off('mouseenter', 'clusters', handleMarkerMouseEnter)
+  mapRef.value.off('mouseleave', 'clusters', handleMarkerMouseLeave)
+  mapRef.value.off('mouseenter', 'unclustered-point', handleMarkerMouseEnter)
+  mapRef.value.off('mouseleave', 'unclustered-point', handleMarkerMouseLeave)
+  mapRef.value.off('click', handleMapClick)
+  mapRef.value.off('dragstart', closeActivePreview)
+  mapRef.value.off('zoomstart', closeActivePreview)
+  mapRef.value.off('zoomend', scheduleDisplaySourceSync)
+
+  mapInteractionsBound = false
 }
 
 const scheduleInitialSourceLoad = () => {
@@ -1518,7 +1619,7 @@ const scheduleInitialSourceLoad = () => {
 }
 
 const scheduleLowZoomMapWarmup = () => {
-  if (!import.meta.client || lowZoomWarmupAbortController) {
+  if (!import.meta.client || lowZoomWarmupAbortController || !baseMapReady) {
     return
   }
 
@@ -1542,6 +1643,125 @@ const scheduleLowZoomMapWarmup = () => {
         lowZoomWarmupAbortController = null
       }
     })
+}
+
+const resetBaseMapTileProtocol = async () => {
+  if (!maplibregl) {
+    return
+  }
+
+  lowZoomWarmupAbortController?.abort()
+  lowZoomWarmupAbortController = null
+  await resetPmtilesProtocol(maplibregl)
+}
+
+const scheduleBaseMapHealthCheck = (
+  delay = BASEMAP_HEALTH_CHECK_DELAY_MS,
+  options: { recoverOnFailure?: boolean } = {}
+) => {
+  if (!import.meta.client || !mapRef.value || baseMapReady || baseMapHealthCheckTimer !== null) {
+    return
+  }
+
+  baseMapHealthCheckTimer = window.setTimeout(() => {
+    baseMapHealthCheckTimer = null
+
+    if (markBaseMapReadyIfVisible()) {
+      return
+    }
+
+    if (options.recoverOnFailure !== false) {
+      scheduleBaseMapRecovery()
+    }
+  }, delay)
+}
+
+const reloadBaseMapStyle = async () => {
+  if (!mapRef.value || baseMapReady || baseMapRecoveryAttempts >= BASEMAP_RECOVERY_MAX_ATTEMPTS) {
+    return
+  }
+
+  const currentSequence = ++mapStyleSequence
+  baseMapRecoveryAttempts += 1
+  startMapLoading()
+
+  try {
+    await resetBaseMapTileProtocol()
+
+    const style = await fetchHostedMapStyle(getMapStyleUrl(), {
+      taiwanProvinceLabel: taiwanProvinceLabel.value
+    })
+
+    if (currentSequence !== mapStyleSequence || !mapRef.value || baseMapReady) {
+      return
+    }
+
+    prepareBaseMapForStyleLoad({ resetAttempts: false })
+    pendingStyleSourceRefresh = initialSourceLoaded
+    unbindMapInteractions()
+    mapRef.value.setStyle(style)
+    scheduleMapResize()
+    scheduleMapRuntimeSync()
+    scheduleBaseMapHealthCheck()
+  } catch {
+    scheduleBaseMapRecovery()
+  } finally {
+    finishMapLoading()
+  }
+}
+
+function scheduleBaseMapRecovery() {
+  if (
+    !import.meta.client
+    || !mapRef.value
+    || baseMapReady
+    || baseMapRecoveryTimer !== null
+    || baseMapRecoveryAttempts >= BASEMAP_RECOVERY_MAX_ATTEMPTS
+  ) {
+    return
+  }
+
+  const delay = BASEMAP_RECOVERY_RETRY_DELAYS_MS[
+    Math.min(baseMapRecoveryAttempts, BASEMAP_RECOVERY_RETRY_DELAYS_MS.length - 1)
+  ]
+
+  baseMapRecoveryTimer = window.setTimeout(() => {
+    baseMapRecoveryTimer = null
+    void reloadBaseMapStyle()
+  }, delay)
+}
+
+const isBaseMapErrorEvent = (event: unknown) => {
+  const mapEvent = event as {
+    error?: {
+      message?: string
+    }
+    sourceId?: string
+  }
+  const message = mapEvent.error?.message || ''
+
+  return (
+    mapEvent.sourceId === MAP_BASE_SOURCE_NAME
+    || /pmtiles|protomaps|failed to fetch|bad response code|server returned|etag/i.test(message)
+  )
+}
+
+const handleMapError = (event: unknown) => {
+  if (!isBaseMapErrorEvent(event)) {
+    return
+  }
+
+  scheduleBaseMapRecovery()
+}
+
+const handleBaseMapSourceData = (event: { sourceId?: string, isSourceLoaded?: boolean }) => {
+  if (event.sourceId !== MAP_BASE_SOURCE_NAME || !event.isSourceLoaded || baseMapReady) {
+    return
+  }
+
+  scheduleBaseMapHealthCheck(BASEMAP_HEALTH_CONFIRM_DELAY_MS, {
+    recoverOnFailure: false
+  })
 }
 
 const loadRegionHighlight = async (scope: RegionScope | null) => {
@@ -1709,11 +1929,13 @@ watch([isDark, locale], async ([dark]) => {
       return
     }
 
+    prepareBaseMapForStyleLoad()
     pendingStyleSourceRefresh = initialSourceLoaded
-    mapInteractionsBound = false
+    unbindMapInteractions()
     mapRef.value.setStyle(style)
     scheduleMapResize()
     scheduleMapRuntimeSync()
+    scheduleBaseMapHealthCheck()
   } finally {
     finishMapLoading()
   }
@@ -1731,6 +1953,7 @@ onMounted(async () => {
     await registerPmtilesProtocol(maplibregl)
     const style = await fetchInitialMapStyle()
 
+    prepareBaseMapForStyleLoad()
     mapRef.value = new maplibregl.Map({
       container: mapEl.value,
       style,
@@ -1753,16 +1976,20 @@ onMounted(async () => {
 
   mapRef.value.on('style.load', scheduleMapRuntimeSync)
   mapRef.value.on('styledata', scheduleMapRuntimeSync)
+  mapRef.value.on('sourcedata', handleBaseMapSourceData)
+  mapRef.value.on('error', handleMapError)
 
   mapRef.value.on('idle', () => {
     scheduleMapResize()
     scheduleMapRuntimeSync()
+    markBaseMapReadyIfVisible()
   })
 
   mapRef.value.on('load', () => {
     scheduleMapRuntimeSync()
     scheduleInitialSourceLoad()
     scheduleLowZoomMapWarmup()
+    scheduleBaseMapHealthCheck()
 
     if (props.selectedPostId) {
       void focusSelectedPost(props.selectedPostId)
@@ -1831,21 +2058,24 @@ onBeforeUnmount(() => {
     window.cancelAnimationFrame(markerAppearAnimationFrame)
     markerAppearAnimationFrame = null
   }
+  clearBaseMapHealthCheckTimer()
+  clearBaseMapRecoveryTimer()
   window.removeEventListener('focus', refreshVisibleMapSource)
   window.removeEventListener('resize', handleWindowResize)
   document.removeEventListener('visibilitychange', refreshVisibleMapSource)
+  unbindMapInteractions()
   mapRef.value?.remove()
 })
 </script>
 
 <template>
   <div class="map-stage">
-    <div
+    <!--<div
       class="map-background-hint"
       aria-hidden="true"
     >
       {{ t('map.loadFallbackHint') }}
-    </div>
+    </div>-->
 
     <div ref="mapEl" class="map-canvas" />
 
