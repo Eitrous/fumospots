@@ -1,7 +1,7 @@
 import type { LocationQuery, LocationQueryRaw, RouteLocationRaw } from 'vue-router'
 import type { RegionScope, RegionSort, WorkbenchPanel } from '~~/shared/fumo'
 
-const PANEL_VALUES = new Set<WorkbenchPanel>(['info', 'post', 'login', 'onboarding', 'submit', 'edit', 'user', 'region'])
+const PANEL_VALUES = new Set<WorkbenchPanel>(['info', 'post', 'login', 'onboarding', 'submit', 'edit', 'user', 'region', 'posts'])
 const REGION_SORT_VALUES = new Set<RegionSort>(['created', 'captured'])
 
 const firstQueryValue = (value: LocationQuery[string]) => {

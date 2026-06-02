@@ -46,9 +46,17 @@
     "posterShare": "分享你自己的作品",
     "posterClosing": "期待你的投稿。",
     "stats": {
+      "title": "统计",
       "publicPosts": "投稿",
       "registeredUsers": "贡献者",
       "loadFailed": "统计加载失败"
+    },
+    "latestPosts": {
+      "title": "最新",
+      "loading": "正在加载最新投稿…",
+      "loadFailed": "最新投稿加载失败",
+      "empty": "暂无投稿",
+      "viewAll": "查看全部"
     },
     "actions": {
       "login": "登录",
@@ -68,6 +76,25 @@
         "title": "投稿信息",
         "body": "每条记录包含照片、地点、作者 ID 和留言。"
       }
+    }
+  },
+  "allPosts": {
+    "eyebrow": "投稿列表",
+    "title": "所有投稿",
+    "description": "按投稿时间排序，可切换最新或最早在前。",
+    "postsTitle": "全部投稿",
+    "visibleCount": "已显示 {shown} / {count}",
+    "sortNewest": "最新",
+    "sortOldest": "最早",
+    "switchToNewest": "切换为最新在前",
+    "switchToOldest": "切换为最早在前",
+    "loading": "正在加载所有投稿…",
+    "loadMore": "加载更多",
+    "loadingMore": "加载中…",
+    "emptyTitle": "暂无投稿",
+    "emptyDescription": "这里还没有公开投稿。",
+    "errors": {
+      "loadFailed": "所有投稿加载失败。"
     }
   },
   "map": {

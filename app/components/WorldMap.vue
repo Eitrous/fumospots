@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { GeoJSONSource, Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl'
+import type { GeoJSONSource, Map as MapLibreMap, MapMouseEvent, MapSourceDataEvent } from 'maplibre-gl'
 import type {
   GeoBounds,
   PublicMapPointCollection,
@@ -100,6 +100,8 @@ const BASEMAP_HEALTH_CHECK_DELAY_MS = 4200
 const BASEMAP_HEALTH_CONFIRM_DELAY_MS = 220
 const BASEMAP_RECOVERY_MAX_ATTEMPTS = 3
 const BASEMAP_RECOVERY_RETRY_DELAYS_MS = [600, 1800, 4200] as const
+const BASEMAP_TILE_LOADING_MAX_MS = 5000
+const BASEMAP_TILE_LOADING_INTERACTION_SETTLE_MS = 1200
 const BASEMAP_PROBE_LAYER_IDS = [
   'earth',
   'water',
@@ -136,7 +138,8 @@ const SAME_COORDINATE_EPSILON = 0.000001
 const mapEl = ref<HTMLDivElement | null>(null)
 const mapRef = shallowRef<MapLibreMap | null>(null)
 const mapLoadingRequests = ref(0)
-const isMapLoading = computed(() => mapLoadingRequests.value > 0)
+const baseMapTileLoadingRequests = ref(0)
+const isMapLoading = computed(() => mapLoadingRequests.value > 0 || baseMapTileLoadingRequests.value > 0)
 const taiwanProvinceLabel = computed(() => t('map.taiwanProvinceLabel'))
 const viewportWidth = ref(import.meta.client ? window.innerWidth : MOBILE_BREAKPOINT + 1)
 const isMobileViewport = computed(() => viewportWidth.value <= MOBILE_BREAKPOINT)
@@ -260,6 +263,9 @@ let mapDisplaySyncFrame: number | null = null
 let markerAppearAnimationFrame: number | null = null
 let baseMapHealthCheckTimer: number | null = null
 let baseMapRecoveryTimer: number | null = null
+let baseMapTileLoadingFallbackTimer: number | null = null
+let baseMapTileLoadingInteractionTimer: number | null = null
+let baseMapTileLoadingInteractionActive = false
 let baseMapReady = false
 let baseMapRecoveryAttempts = 0
 let lowZoomWarmupAbortController: AbortController | null = null
@@ -473,6 +479,114 @@ const finishMapLoading = () => {
   mapLoadingRequests.value = Math.max(0, mapLoadingRequests.value - 1)
 }
 
+const clearBaseMapTileLoadingFallbackTimer = () => {
+  if (!import.meta.client || baseMapTileLoadingFallbackTimer === null) {
+    return
+  }
+
+  window.clearTimeout(baseMapTileLoadingFallbackTimer)
+  baseMapTileLoadingFallbackTimer = null
+}
+
+const clearBaseMapTileLoadingInteractionTimer = () => {
+  if (!import.meta.client || baseMapTileLoadingInteractionTimer === null) {
+    return
+  }
+
+  window.clearTimeout(baseMapTileLoadingInteractionTimer)
+  baseMapTileLoadingInteractionTimer = null
+}
+
+const clearBaseMapTileLoading = () => {
+  clearBaseMapTileLoadingFallbackTimer()
+  baseMapTileLoadingRequests.value = 0
+}
+
+const resetBaseMapTileLoading = () => {
+  baseMapTileLoadingInteractionActive = false
+  clearBaseMapTileLoadingInteractionTimer()
+  clearBaseMapTileLoading()
+}
+
+const isBaseMapTileLoadingEvent = (event: Partial<MapSourceDataEvent>) => {
+  return event.sourceId === MAP_BASE_SOURCE_NAME && Boolean(event.tile)
+}
+
+const isBaseMapSourceLoaded = () => {
+  if (!mapRef.value?.getSource(MAP_BASE_SOURCE_NAME)) {
+    return true
+  }
+
+  try {
+    return mapRef.value.isSourceLoaded(MAP_BASE_SOURCE_NAME)
+  } catch {
+    return false
+  }
+}
+
+const scheduleBaseMapTileLoadingFallback = () => {
+  if (!import.meta.client) {
+    return
+  }
+
+  clearBaseMapTileLoadingFallbackTimer()
+  baseMapTileLoadingFallbackTimer = window.setTimeout(() => {
+    baseMapTileLoadingFallbackTimer = null
+    clearBaseMapTileLoading()
+  }, BASEMAP_TILE_LOADING_MAX_MS)
+}
+
+const startBaseMapTileLoading = (event: MapSourceDataEvent) => {
+  if (!isBaseMapTileLoadingEvent(event)) {
+    return
+  }
+
+  if (!baseMapTileLoadingInteractionActive) {
+    return
+  }
+
+  baseMapTileLoadingRequests.value = 1
+  scheduleBaseMapTileLoadingFallback()
+}
+
+const finishBaseMapTileLoading = (event: Partial<MapSourceDataEvent>) => {
+  if (event.sourceId !== MAP_BASE_SOURCE_NAME) {
+    return
+  }
+
+  if (event.isSourceLoaded || isBaseMapSourceLoaded()) {
+    clearBaseMapTileLoading()
+  } else if (baseMapTileLoadingRequests.value > 0) {
+    scheduleBaseMapTileLoadingFallback()
+  }
+}
+
+const syncBaseMapTileLoadingState = () => {
+  if (baseMapTileLoadingRequests.value > 0 && isBaseMapSourceLoaded()) {
+    clearBaseMapTileLoading()
+  }
+}
+
+const handleBaseMapViewportLoadingStart = () => {
+  baseMapTileLoadingInteractionActive = true
+  clearBaseMapTileLoadingInteractionTimer()
+}
+
+const handleBaseMapViewportLoadingEnd = () => {
+  if (!import.meta.client) {
+    baseMapTileLoadingInteractionActive = false
+    clearBaseMapTileLoading()
+    return
+  }
+
+  clearBaseMapTileLoadingInteractionTimer()
+  baseMapTileLoadingInteractionTimer = window.setTimeout(() => {
+    baseMapTileLoadingInteractionTimer = null
+    baseMapTileLoadingInteractionActive = false
+    syncBaseMapTileLoadingState()
+  }, BASEMAP_TILE_LOADING_INTERACTION_SETTLE_MS)
+}
+
 const clearBaseMapHealthCheckTimer = () => {
   if (!import.meta.client || baseMapHealthCheckTimer === null) {
     return
@@ -493,6 +607,7 @@ const clearBaseMapRecoveryTimer = () => {
 
 const prepareBaseMapForStyleLoad = (options: { resetAttempts?: boolean } = {}) => {
   baseMapReady = false
+  resetBaseMapTileLoading()
   clearBaseMapHealthCheckTimer()
   clearBaseMapRecoveryTimer()
 
@@ -1747,6 +1862,8 @@ const isBaseMapErrorEvent = (event: unknown) => {
 }
 
 const handleMapError = (event: unknown) => {
+  finishBaseMapTileLoading(event as Partial<MapSourceDataEvent>)
+
   if (!isBaseMapErrorEvent(event)) {
     return
   }
@@ -1754,7 +1871,9 @@ const handleMapError = (event: unknown) => {
   scheduleBaseMapRecovery()
 }
 
-const handleBaseMapSourceData = (event: { sourceId?: string, isSourceLoaded?: boolean }) => {
+const handleBaseMapSourceData = (event: MapSourceDataEvent) => {
+  finishBaseMapTileLoading(event)
+
   if (event.sourceId !== MAP_BASE_SOURCE_NAME || !event.isSourceLoaded || baseMapReady) {
     return
   }
@@ -1762,6 +1881,17 @@ const handleBaseMapSourceData = (event: { sourceId?: string, isSourceLoaded?: bo
   scheduleBaseMapHealthCheck(BASEMAP_HEALTH_CONFIRM_DELAY_MS, {
     recoverOnFailure: false
   })
+}
+
+const handleBaseMapSourceDataAbort = (event: MapSourceDataEvent) => {
+  finishBaseMapTileLoading(event)
+}
+
+const handleMapIdle = () => {
+  resetBaseMapTileLoading()
+  scheduleMapResize()
+  scheduleMapRuntimeSync()
+  markBaseMapReadyIfVisible()
 }
 
 const loadRegionHighlight = async (scope: RegionScope | null) => {
@@ -1976,14 +2106,14 @@ onMounted(async () => {
 
   mapRef.value.on('style.load', scheduleMapRuntimeSync)
   mapRef.value.on('styledata', scheduleMapRuntimeSync)
+  mapRef.value.on('sourcedataloading', startBaseMapTileLoading)
   mapRef.value.on('sourcedata', handleBaseMapSourceData)
+  mapRef.value.on('sourcedataabort', handleBaseMapSourceDataAbort)
   mapRef.value.on('error', handleMapError)
-
-  mapRef.value.on('idle', () => {
-    scheduleMapResize()
-    scheduleMapRuntimeSync()
-    markBaseMapReadyIfVisible()
-  })
+  mapRef.value.on('render', syncBaseMapTileLoadingState)
+  mapRef.value.on('movestart', handleBaseMapViewportLoadingStart)
+  mapRef.value.on('moveend', handleBaseMapViewportLoadingEnd)
+  mapRef.value.on('idle', handleMapIdle)
 
   mapRef.value.on('load', () => {
     scheduleMapRuntimeSync()
@@ -2037,6 +2167,7 @@ onBeforeUnmount(() => {
   previewRequestSequence += 1
   mapPostsAbortController?.abort()
   mapPostsAbortController = null
+  resetBaseMapTileLoading()
   lowZoomWarmupAbortController?.abort()
   lowZoomWarmupAbortController = null
   teardownPreviewSheetPointerListeners()

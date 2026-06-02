@@ -46,9 +46,17 @@
     "posterShare": "share your own work",
     "posterClosing": "Looking forward to your post.",
     "stats": {
+      "title": "Stats",
       "publicPosts": "Posts",
       "registeredUsers": "Contributors",
       "loadFailed": "Failed to load stats"
+    },
+    "latestPosts": {
+      "title": "Latest",
+      "loading": "Loading latest posts…",
+      "loadFailed": "Failed to load latest posts",
+      "empty": "No posts yet",
+      "viewAll": "View all"
     },
     "actions": {
       "login": "Log in",
@@ -68,6 +76,25 @@
         "title": "Each post",
         "body": "Each record includes photos, place, author ID, and note."
       }
+    }
+  },
+  "allPosts": {
+    "eyebrow": "Post list",
+    "title": "All posts",
+    "description": "Sorted by post time. Switch between newest and oldest first.",
+    "postsTitle": "All posts",
+    "visibleCount": "Showing {shown} / {count}",
+    "sortNewest": "Newest",
+    "sortOldest": "Oldest",
+    "switchToNewest": "Switch to newest first",
+    "switchToOldest": "Switch to oldest first",
+    "loading": "Loading all posts…",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "emptyTitle": "No posts yet",
+    "emptyDescription": "There are no public posts here yet.",
+    "errors": {
+      "loadFailed": "Failed to load all posts."
     }
   },
   "map": {

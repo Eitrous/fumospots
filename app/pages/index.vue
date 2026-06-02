@@ -851,6 +851,10 @@ onBeforeUnmount(() => {
               :sort="selectedRegionSort"
             />
 
+            <WorkbenchPostsPanel
+              v-else-if="currentPanel === 'posts'"
+            />
+
             <WorkbenchPostPanel
               v-else-if="currentPanel === 'post' && selectedPostId"
               :post-id="selectedPostId"

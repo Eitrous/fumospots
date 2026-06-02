@@ -46,9 +46,17 @@
     "posterShare": "自分の一枚を共有する",
     "posterClosing": "次の投稿を待っています。",
     "stats": {
+      "title": "統計データ",
       "publicPosts": "投稿",
       "registeredUsers": "貢献者",
       "loadFailed": "統計の読み込みに失敗しました"
+    },
+    "latestPosts": {
+      "title": "最新",
+      "loading": "最新投稿を読み込み中…",
+      "loadFailed": "最新投稿の読み込みに失敗しました",
+      "empty": "投稿はまだありません",
+      "viewAll": "すべての投稿を見る"
     },
     "actions": {
       "login": "ログイン",
@@ -68,6 +76,25 @@
         "title": "投稿内容",
         "body": "写真、場所、作者 ID、メモを含みます。"
       }
+    }
+  },
+  "allPosts": {
+    "eyebrow": "投稿リスト",
+    "title": "すべての投稿",
+    "description": "投稿時間順で、新しい順と古い順を切り替えられます。",
+    "postsTitle": "すべての投稿",
+    "visibleCount": "{shown} / {count} 件を表示",
+    "sortNewest": "新しい順",
+    "sortOldest": "古い順",
+    "switchToNewest": "新しい順に切り替え",
+    "switchToOldest": "古い順に切り替え",
+    "loading": "すべての投稿を読み込み中…",
+    "loadMore": "さらに読み込む",
+    "loadingMore": "読み込み中…",
+    "emptyTitle": "投稿はまだありません",
+    "emptyDescription": "公開投稿はまだありません。",
+    "errors": {
+      "loadFailed": "すべての投稿の読み込みに失敗しました。"
     }
   },
   "map": {

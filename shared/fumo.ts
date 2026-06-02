@@ -3,7 +3,7 @@ export type PostStatus = 'pending' | 'approved' | 'rejected'
 export type PostRevisionStatus = 'pending' | 'approved' | 'rejected'
 export type AdminReviewItemKind = 'post' | 'revision'
 export type UserRole = 'user' | 'admin'
-export type WorkbenchPanel = 'info' | 'post' | 'login' | 'onboarding' | 'submit' | 'edit' | 'user' | 'region'
+export type WorkbenchPanel = 'info' | 'post' | 'login' | 'onboarding' | 'submit' | 'edit' | 'user' | 'region' | 'posts'
 export type RegionSort = 'created' | 'captured'
 
 export type LatLng = {
@@ -67,6 +67,31 @@ export type PublicMapPreviewItem = {
 
 export type PublicMapPreviewResponse = {
   items: PublicMapPreviewItem[]
+}
+
+export type PublicLatestPostItem = {
+  id: number
+  title: string
+  thumbUrl: string | null
+  placeName: string | null
+}
+
+export type PublicLatestPostsResponse = {
+  items: PublicLatestPostItem[]
+}
+
+export type PublicPostListItem = {
+  id: number
+  title: string
+  thumbUrl: string | null
+  placeName: string | null
+  createdAt: string | null
+}
+
+export type PublicPostsPageResponse = {
+  postCount: number
+  items: PublicPostListItem[]
+  nextOffset: number | null
 }
 
 export type PublicPostDetail = {
