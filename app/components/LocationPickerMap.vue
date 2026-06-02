@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Marker } from 'maplibre-gl'
+import type { Marker, MapSourceDataEvent } from 'maplibre-gl'
 import type { LatLng, PrivacyMode } from '~~/shared/fumo'
 import {
   MAP_DEFAULT_CENTER,
@@ -7,6 +7,15 @@ import {
 } from '~~/shared/fumo'
 import { resolveHostedMapStyleUrl } from '~~/shared/mapStyle'
 import { applyTaiwanProvinceLabelPolicy } from '~~/app/composables/useMapPoliticalLabels'
+import {
+  BASE_MAP_HEALTH_CHECK_DELAY_MS,
+  BASE_MAP_HEALTH_CONFIRM_DELAY_MS,
+  BASE_MAP_RECOVERY_MAX_ATTEMPTS,
+  BASE_MAP_RECOVERY_RETRY_DELAYS_MS,
+  BASE_MAP_SOURCE_NAME,
+  hasRenderedBaseMapFeatures,
+  isBaseMapErrorEvent
+} from '~~/app/composables/useBaseMapHealth'
 
 const props = withDefaults(defineProps<{
   exactLocation?: LatLng | null
@@ -31,12 +40,18 @@ const { targetRef: stageEl, isActivated } = useDeferredVisibility()
 const mapEl = ref<HTMLDivElement | null>(null)
 const mapRef = shallowRef<import('maplibre-gl').Map | null>(null)
 const taiwanProvinceLabel = computed(() => t('map.taiwanProvinceLabel'))
+const mapLoadFailed = ref(false)
 
 let maplibregl: typeof import('maplibre-gl') | null = null
 let exactMarker: Marker | null = null
 let publicMarker: Marker | null = null
 let mapInitPromise: Promise<void> | null = null
 let mapStyleSequence = 0
+let baseMapReady = false
+let baseMapRecoveryAttempts = 0
+let baseMapHealthCheckTimer: number | null = null
+let baseMapRecoveryTimer: number | null = null
+let mapDisposed = false
 
 const getMapStyleUrl = (dark = isDark.value) => {
   return resolveHostedMapStyleUrl({
@@ -171,30 +186,215 @@ const applyPoliticalLabels = () => {
   applyTaiwanProvinceLabelPolicy(mapRef.value, taiwanProvinceLabel.value)
 }
 
+const clearBaseMapHealthCheckTimer = () => {
+  if (!import.meta.client || baseMapHealthCheckTimer === null) {
+    return
+  }
+
+  window.clearTimeout(baseMapHealthCheckTimer)
+  baseMapHealthCheckTimer = null
+}
+
+const clearBaseMapRecoveryTimer = () => {
+  if (!import.meta.client || baseMapRecoveryTimer === null) {
+    return
+  }
+
+  window.clearTimeout(baseMapRecoveryTimer)
+  baseMapRecoveryTimer = null
+}
+
+const clearBaseMapTimers = () => {
+  clearBaseMapHealthCheckTimer()
+  clearBaseMapRecoveryTimer()
+}
+
+const prepareBaseMapForStyleLoad = (options: { resetAttempts?: boolean } = {}) => {
+  baseMapReady = false
+  mapLoadFailed.value = false
+  clearBaseMapTimers()
+
+  if (options.resetAttempts !== false) {
+    baseMapRecoveryAttempts = 0
+  }
+}
+
+const syncMapRuntimeState = () => {
+  applyPoliticalLabels()
+  syncMarkers()
+  syncViewport()
+}
+
+const markBaseMapReadyIfVisible = () => {
+  if (baseMapReady) {
+    return true
+  }
+
+  if (!hasRenderedBaseMapFeatures(mapRef.value)) {
+    return false
+  }
+
+  baseMapReady = true
+  baseMapRecoveryAttempts = 0
+  mapLoadFailed.value = false
+  clearBaseMapTimers()
+  syncMapRuntimeState()
+  return true
+}
+
+const markBaseMapFailed = () => {
+  if (!baseMapReady) {
+    mapLoadFailed.value = true
+  }
+}
+
+const getBaseMapRecoveryDelay = () => {
+  return BASE_MAP_RECOVERY_RETRY_DELAYS_MS[
+    Math.min(baseMapRecoveryAttempts, BASE_MAP_RECOVERY_RETRY_DELAYS_MS.length - 1)
+  ]
+}
+
+const scheduleBaseMapHealthCheck = (
+  delay = BASE_MAP_HEALTH_CHECK_DELAY_MS,
+  options: { recoverOnFailure?: boolean } = {}
+) => {
+  if (!import.meta.client || mapDisposed || !mapRef.value || baseMapReady || baseMapHealthCheckTimer !== null) {
+    return
+  }
+
+  baseMapHealthCheckTimer = window.setTimeout(() => {
+    baseMapHealthCheckTimer = null
+
+    if (markBaseMapReadyIfVisible()) {
+      return
+    }
+
+    if (options.recoverOnFailure !== false) {
+      scheduleBaseMapRecovery()
+    }
+  }, delay)
+}
+
+const reloadBaseMapStyle = async () => {
+  if (!mapRef.value || baseMapReady) {
+    return
+  }
+
+  if (baseMapRecoveryAttempts >= BASE_MAP_RECOVERY_MAX_ATTEMPTS) {
+    markBaseMapFailed()
+    return
+  }
+
+  const currentSequence = ++mapStyleSequence
+  baseMapRecoveryAttempts += 1
+  mapLoadFailed.value = false
+
+  try {
+    if (maplibregl) {
+      await recoverPmtilesProtocol(maplibregl)
+    }
+
+    const style = await fetchHostedMapStyle(getMapStyleUrl(), {
+      taiwanProvinceLabel: taiwanProvinceLabel.value
+    })
+
+    if (currentSequence !== mapStyleSequence || !mapRef.value || baseMapReady) {
+      return
+    }
+
+    prepareBaseMapForStyleLoad({ resetAttempts: false })
+    mapRef.value.setStyle(style)
+    scheduleBaseMapHealthCheck()
+  } catch {
+    scheduleBaseMapRecovery()
+  }
+}
+
+function scheduleBaseMapRecovery() {
+  if (!import.meta.client || mapDisposed || baseMapReady || baseMapRecoveryTimer !== null) {
+    return
+  }
+
+  if (baseMapRecoveryAttempts >= BASE_MAP_RECOVERY_MAX_ATTEMPTS) {
+    markBaseMapFailed()
+    return
+  }
+
+  baseMapRecoveryTimer = window.setTimeout(() => {
+    baseMapRecoveryTimer = null
+
+    if (mapRef.value) {
+      void reloadBaseMapStyle()
+      return
+    }
+
+    void initializeMap({ recoveryAttempt: true })
+  }, getBaseMapRecoveryDelay())
+}
+
+const handleMapError = (event: unknown) => {
+  if (!isBaseMapErrorEvent(event)) {
+    return
+  }
+
+  scheduleBaseMapRecovery()
+}
+
+const handleBaseMapSourceData = (event: MapSourceDataEvent) => {
+  if (event.sourceId !== BASE_MAP_SOURCE_NAME || !event.isSourceLoaded || baseMapReady) {
+    return
+  }
+
+  scheduleBaseMapHealthCheck(BASE_MAP_HEALTH_CONFIRM_DELAY_MS, {
+    recoverOnFailure: false
+  })
+}
+
+const handleMapIdle = () => {
+  markBaseMapReadyIfVisible()
+}
+
+const handleMapStyleLoad = () => {
+  syncMapRuntimeState()
+  scheduleBaseMapHealthCheck()
+}
+
+const retryBaseMap = () => {
+  prepareBaseMapForStyleLoad()
+
+  if (mapRef.value) {
+    void reloadBaseMapStyle()
+    return
+  }
+
+  void initializeMap()
+}
+
 watch([isDark, locale], async ([dark]) => {
   if (!mapRef.value) {
     return
   }
 
   const currentSequence = ++mapStyleSequence
-  const style = await fetchHostedMapStyle(getMapStyleUrl(dark), {
-    taiwanProvinceLabel: taiwanProvinceLabel.value
-  })
 
-  if (currentSequence !== mapStyleSequence || !mapRef.value) {
-    return
+  try {
+    const style = await fetchHostedMapStyle(getMapStyleUrl(dark), {
+      taiwanProvinceLabel: taiwanProvinceLabel.value
+    })
+
+    if (currentSequence !== mapStyleSequence || !mapRef.value) {
+      return
+    }
+
+    prepareBaseMapForStyleLoad()
+    mapRef.value.setStyle(style)
+    scheduleBaseMapHealthCheck()
+  } catch {
+    scheduleBaseMapRecovery()
   }
-
-  mapRef.value.setStyle(style)
-
-  mapRef.value.once('style.load', () => {
-    applyPoliticalLabels()
-    syncMarkers()
-    syncViewport()
-  })
 })
 
-const initializeMap = async () => {
+const initializeMap = async (options: { recoveryAttempt?: boolean } = {}) => {
   if (!mapEl.value || mapRef.value) {
     return
   }
@@ -206,9 +406,20 @@ const initializeMap = async () => {
 
   mapInitPromise = (async () => {
     maplibregl = maplibregl || await import('maplibre-gl')
-    await registerPmtilesProtocol(maplibregl)
+
+    if (options.recoveryAttempt) {
+      baseMapRecoveryAttempts += 1
+      await recoverPmtilesProtocol(maplibregl)
+    } else {
+      await registerPmtilesProtocol(maplibregl)
+    }
+
     const style = await fetchHostedMapStyle(getMapStyleUrl(), {
       taiwanProvinceLabel: taiwanProvinceLabel.value
+    })
+
+    prepareBaseMapForStyleLoad({
+      resetAttempts: !options.recoveryAttempt
     })
 
     mapRef.value = new maplibregl.Map({
@@ -220,11 +431,11 @@ const initializeMap = async () => {
 
     mapRef.value.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
 
-    mapRef.value.on('load', () => {
-      applyPoliticalLabels()
-      syncMarkers()
-      syncViewport()
-    })
+    mapRef.value.on('style.load', handleMapStyleLoad)
+    mapRef.value.on('sourcedata', handleBaseMapSourceData)
+    mapRef.value.on('error', handleMapError)
+    mapRef.value.on('idle', handleMapIdle)
+    mapRef.value.on('load', handleMapStyleLoad)
 
     mapRef.value.on('click', (event) => {
       emitExactLocation({
@@ -232,9 +443,14 @@ const initializeMap = async () => {
         lng: event.lngLat.lng
       })
     })
-  })().finally(() => {
-    mapInitPromise = null
-  })
+    scheduleBaseMapHealthCheck()
+  })()
+    .catch(() => {
+      scheduleBaseMapRecovery()
+    })
+    .finally(() => {
+      mapInitPromise = null
+    })
 
   await mapInitPromise
 }
@@ -270,7 +486,9 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  mapDisposed = true
   mapStyleSequence += 1
+  clearBaseMapTimers()
   exactMarker?.remove()
   publicMarker?.remove()
   mapRef.value?.remove()
@@ -280,5 +498,11 @@ onBeforeUnmount(() => {
 <template>
   <div ref="stageEl" class="picker-stage">
     <div ref="mapEl" class="picker-canvas" />
+    <div v-if="mapLoadFailed" class="picker-map-status" role="status">
+      <p>{{ t('map.baseMapLoadFailed') }}</p>
+      <button type="button" class="picker-map-status__button" @click="retryBaseMap">
+        {{ t('map.retryBaseMap') }}
+      </button>
+    </div>
   </div>
 </template>

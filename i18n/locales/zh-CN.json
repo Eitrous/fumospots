@@ -100,6 +100,8 @@
   "map": {
     "loading": "地图正在展开…",
     "loadFallbackHint": "如果你能看到我，\n说明地图还没有加载出来，\n请尝试刷新",
+    "baseMapLoadFailed": "地图加载失败。",
+    "retryBaseMap": "重试地图",
     "visibleCount": "当前视野内有 {count} 张已发布照片",
     "helper": "拖拽或缩放地图会按当前视野重新加载内容，点击图钉可在右侧查看详情。",
     "dataLoadFailed": "地图数据加载失败。",

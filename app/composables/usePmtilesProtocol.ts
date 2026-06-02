@@ -15,6 +15,8 @@ type PmtilesProtocol = {
 type PmtilesProtocolState = {
   registered: boolean
   protocol: PmtilesProtocol | null
+  registrationPromise: Promise<void> | null
+  recoveryPromise: Promise<void> | null
   modulePromise: Promise<PmtilesModule> | null
   archives: Map<string, PmtilesArchive>
   completedLowZoomWarmups: Set<string>
@@ -48,6 +50,8 @@ const getPmtilesProtocolState = () => {
     globalState[PMTILES_PROTOCOL_STATE_KEY] = {
       registered: false,
       protocol: null,
+      registrationPromise: null,
+      recoveryPromise: null,
       modulePromise: null,
       archives: new Map(),
       completedLowZoomWarmups: new Set(),
@@ -66,6 +70,11 @@ const loadPmtilesModule = () => {
 }
 
 const normalizePmtilesUrl = (pmtilesUrl: string | null | undefined) => pmtilesUrl?.trim() || ''
+
+const clearLowZoomWarmupState = (state: PmtilesProtocolState) => {
+  state.completedLowZoomWarmups.clear()
+  state.activeLowZoomWarmups.clear()
+}
 
 const createAbortError = () => {
   const error = new Error('Aborted')
@@ -185,38 +194,68 @@ export const registerPmtilesProtocol = async (
     return
   }
 
-  const { Protocol } = await import('~~/vendor/pmtiles.mjs')
-  const protocol = new Protocol({ metadata: true }) as PmtilesProtocol
-
-  for (const archive of state.archives.values()) {
-    protocol.add(archive)
+  if (state.registrationPromise) {
+    await state.registrationPromise
+    return
   }
 
-  maplibregl.addProtocol('pmtiles', protocol.tile as Parameters<typeof maplibregl.addProtocol>[1])
-  state.protocol = protocol
-  state.registered = true
+  state.registrationPromise = (async () => {
+    const { Protocol } = await loadPmtilesModule()
+    const protocol = new Protocol({ metadata: true }) as PmtilesProtocol
+
+    for (const archive of state.archives.values()) {
+      protocol.add(archive)
+    }
+
+    maplibregl.addProtocol('pmtiles', protocol.tile as Parameters<typeof maplibregl.addProtocol>[1])
+    state.protocol = protocol
+    state.registered = true
+  })().finally(() => {
+    state.registrationPromise = null
+  })
+
+  await state.registrationPromise
 }
 
-export const resetPmtilesProtocol = async (
+export const recoverPmtilesProtocol = async (
   maplibregl: typeof import('maplibre-gl')
 ) => {
   const state = getPmtilesProtocolState()
 
-  state.generation += 1
-  state.protocol = null
-  state.registered = false
-  state.archives.clear()
-  state.completedLowZoomWarmups.clear()
-  state.activeLowZoomWarmups.clear()
-
-  try {
-    maplibregl.removeProtocol('pmtiles')
-  } catch {
-    // The protocol may not have been registered in this MapLibre instance.
+  if (state.recoveryPromise) {
+    await state.recoveryPromise
+    return
   }
 
-  await registerPmtilesProtocol(maplibregl)
+  state.recoveryPromise = (async () => {
+    if (state.registrationPromise) {
+      try {
+        await state.registrationPromise
+      } catch {
+        // Recovery installs a fresh protocol below even if the previous registration failed.
+      }
+    }
+
+    state.generation += 1
+    state.protocol = null
+    state.registered = false
+    clearLowZoomWarmupState(state)
+
+    try {
+      maplibregl.removeProtocol('pmtiles')
+    } catch {
+      // The protocol may not have been registered in this MapLibre instance.
+    }
+
+    await registerPmtilesProtocol(maplibregl)
+  })().finally(() => {
+    state.recoveryPromise = null
+  })
+
+  await state.recoveryPromise
 }
+
+export const resetPmtilesProtocol = recoverPmtilesProtocol
 
 export const warmLowZoomPmtilesCache = (
   pmtilesUrl: string,

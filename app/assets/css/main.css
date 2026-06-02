@@ -1219,6 +1219,54 @@ html[data-theme="dark"] .workbench-user-post-row {
   box-shadow: var(--shadow-sm);
 }
 
+.picker-map-status {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.8rem;
+  padding: 1rem;
+  background: rgba(241, 240, 236, 0.82);
+  color: var(--ink-soft);
+  text-align: center;
+  backdrop-filter: blur(8px);
+}
+
+.picker-map-status p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.picker-map-status__button {
+  min-height: 2.35rem;
+  padding: 0 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.picker-map-status__button:hover,
+.picker-map-status__button:focus-visible {
+  border-color: rgba(22, 146, 95, 0.45);
+  background: rgba(22, 146, 95, 0.1);
+  outline: 0;
+}
+
+html[data-theme="dark"] .picker-map-status {
+  background: rgba(31, 39, 46, 0.84);
+}
+
+html[data-theme="dark"] .picker-map-status__button {
+  background: rgba(136, 154, 166, 0.14);
+  color: var(--ink);
+}
+
 .picker-stage--compact {
   min-height: 260px;
 }

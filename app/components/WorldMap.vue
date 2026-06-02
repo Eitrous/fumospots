@@ -13,6 +13,16 @@ import {
 } from '~~/shared/fumo'
 import { resolveHostedMapStyleUrl } from '~~/shared/mapStyle'
 import { applyTaiwanProvinceLabelPolicy } from '~~/app/composables/useMapPoliticalLabels'
+import {
+  BASE_MAP_HEALTH_CHECK_DELAY_MS,
+  BASE_MAP_HEALTH_CONFIRM_DELAY_MS,
+  BASE_MAP_RECOVERY_MAX_ATTEMPTS,
+  BASE_MAP_RECOVERY_RETRY_DELAYS_MS,
+  BASE_MAP_SOURCE_NAME,
+  hasRenderedBaseMapFeatures as hasVisibleBaseMapFeatures,
+  isBaseMapErrorEvent,
+  isBaseMapSourceLoaded as isSharedBaseMapSourceLoaded
+} from '~~/app/composables/useBaseMapHealth'
 
 const props = withDefaults(defineProps<{
   selectedPostId?: number | null
@@ -94,22 +104,9 @@ useMapResourceHints()
 
 const MOBILE_BREAKPOINT = 980
 const LOW_ZOOM_PMTILES_CACHE_MAX_ZOOM = 4
-const MAP_BASE_SOURCE_NAME = 'protomaps'
 const MAX_PREVIEW_FETCH_ITEMS = 100
-const BASEMAP_HEALTH_CHECK_DELAY_MS = 4200
-const BASEMAP_HEALTH_CONFIRM_DELAY_MS = 220
-const BASEMAP_RECOVERY_MAX_ATTEMPTS = 3
-const BASEMAP_RECOVERY_RETRY_DELAYS_MS = [600, 1800, 4200] as const
 const BASEMAP_TILE_LOADING_MAX_MS = 5000
 const BASEMAP_TILE_LOADING_INTERACTION_SETTLE_MS = 1200
-const BASEMAP_PROBE_LAYER_IDS = [
-  'earth',
-  'water',
-  'landuse_park',
-  'roads_major',
-  'boundaries_country',
-  'places_country'
-] as const
 const CLUSTER_BUBBLE_STROKE_WIDTH_PX = 2
 const CLUSTER_ZOOM_FIT_DURATION_MS = 620
 const CLUSTER_ZOOM_BREAKOUT_MARGIN = 0.1
@@ -509,19 +506,15 @@ const resetBaseMapTileLoading = () => {
 }
 
 const isBaseMapTileLoadingEvent = (event: Partial<MapSourceDataEvent>) => {
-  return event.sourceId === MAP_BASE_SOURCE_NAME && Boolean(event.tile)
+  return event.sourceId === BASE_MAP_SOURCE_NAME && Boolean(event.tile)
 }
 
-const isBaseMapSourceLoaded = () => {
-  if (!mapRef.value?.getSource(MAP_BASE_SOURCE_NAME)) {
+const isBaseMapTileSourceIdle = () => {
+  if (!mapRef.value?.getSource(BASE_MAP_SOURCE_NAME)) {
     return true
   }
 
-  try {
-    return mapRef.value.isSourceLoaded(MAP_BASE_SOURCE_NAME)
-  } catch {
-    return false
-  }
+  return isSharedBaseMapSourceLoaded(mapRef.value)
 }
 
 const scheduleBaseMapTileLoadingFallback = () => {
@@ -550,11 +543,11 @@ const startBaseMapTileLoading = (event: MapSourceDataEvent) => {
 }
 
 const finishBaseMapTileLoading = (event: Partial<MapSourceDataEvent>) => {
-  if (event.sourceId !== MAP_BASE_SOURCE_NAME) {
+  if (event.sourceId !== BASE_MAP_SOURCE_NAME) {
     return
   }
 
-  if (event.isSourceLoaded || isBaseMapSourceLoaded()) {
+  if (event.isSourceLoaded || isBaseMapTileSourceIdle()) {
     clearBaseMapTileLoading()
   } else if (baseMapTileLoadingRequests.value > 0) {
     scheduleBaseMapTileLoadingFallback()
@@ -562,7 +555,7 @@ const finishBaseMapTileLoading = (event: Partial<MapSourceDataEvent>) => {
 }
 
 const syncBaseMapTileLoadingState = () => {
-  if (baseMapTileLoadingRequests.value > 0 && isBaseMapSourceLoaded()) {
+  if (baseMapTileLoadingRequests.value > 0 && isBaseMapTileSourceIdle()) {
     clearBaseMapTileLoading()
   }
 }
@@ -616,29 +609,8 @@ const prepareBaseMapForStyleLoad = (options: { resetAttempts?: boolean } = {}) =
   }
 }
 
-const getExistingBaseMapProbeLayers = () => {
-  if (!mapRef.value) {
-    return []
-  }
-
-  return BASEMAP_PROBE_LAYER_IDS.filter(layerId => Boolean(mapRef.value?.getLayer(layerId)))
-}
-
 const hasRenderedBaseMapFeatures = () => {
-  if (!mapRef.value || !mapRef.value.isStyleLoaded()) {
-    return false
-  }
-
-  const layers = getExistingBaseMapProbeLayers()
-  if (!layers.length) {
-    return false
-  }
-
-  try {
-    return mapRef.value.queryRenderedFeatures({ layers }).length > 0
-  } catch {
-    return false
-  }
+  return hasVisibleBaseMapFeatures(mapRef.value)
 }
 
 const markBaseMapReadyIfVisible = () => {
@@ -1767,11 +1739,11 @@ const resetBaseMapTileProtocol = async () => {
 
   lowZoomWarmupAbortController?.abort()
   lowZoomWarmupAbortController = null
-  await resetPmtilesProtocol(maplibregl)
+  await recoverPmtilesProtocol(maplibregl)
 }
 
 const scheduleBaseMapHealthCheck = (
-  delay = BASEMAP_HEALTH_CHECK_DELAY_MS,
+  delay = BASE_MAP_HEALTH_CHECK_DELAY_MS,
   options: { recoverOnFailure?: boolean } = {}
 ) => {
   if (!import.meta.client || !mapRef.value || baseMapReady || baseMapHealthCheckTimer !== null) {
@@ -1792,7 +1764,7 @@ const scheduleBaseMapHealthCheck = (
 }
 
 const reloadBaseMapStyle = async () => {
-  if (!mapRef.value || baseMapReady || baseMapRecoveryAttempts >= BASEMAP_RECOVERY_MAX_ATTEMPTS) {
+  if (!mapRef.value || baseMapReady || baseMapRecoveryAttempts >= BASE_MAP_RECOVERY_MAX_ATTEMPTS) {
     return
   }
 
@@ -1831,34 +1803,19 @@ function scheduleBaseMapRecovery() {
     || !mapRef.value
     || baseMapReady
     || baseMapRecoveryTimer !== null
-    || baseMapRecoveryAttempts >= BASEMAP_RECOVERY_MAX_ATTEMPTS
+    || baseMapRecoveryAttempts >= BASE_MAP_RECOVERY_MAX_ATTEMPTS
   ) {
     return
   }
 
-  const delay = BASEMAP_RECOVERY_RETRY_DELAYS_MS[
-    Math.min(baseMapRecoveryAttempts, BASEMAP_RECOVERY_RETRY_DELAYS_MS.length - 1)
+  const delay = BASE_MAP_RECOVERY_RETRY_DELAYS_MS[
+    Math.min(baseMapRecoveryAttempts, BASE_MAP_RECOVERY_RETRY_DELAYS_MS.length - 1)
   ]
 
   baseMapRecoveryTimer = window.setTimeout(() => {
     baseMapRecoveryTimer = null
     void reloadBaseMapStyle()
   }, delay)
-}
-
-const isBaseMapErrorEvent = (event: unknown) => {
-  const mapEvent = event as {
-    error?: {
-      message?: string
-    }
-    sourceId?: string
-  }
-  const message = mapEvent.error?.message || ''
-
-  return (
-    mapEvent.sourceId === MAP_BASE_SOURCE_NAME
-    || /pmtiles|protomaps|failed to fetch|bad response code|server returned|etag/i.test(message)
-  )
 }
 
 const handleMapError = (event: unknown) => {
@@ -1874,11 +1831,11 @@ const handleMapError = (event: unknown) => {
 const handleBaseMapSourceData = (event: MapSourceDataEvent) => {
   finishBaseMapTileLoading(event)
 
-  if (event.sourceId !== MAP_BASE_SOURCE_NAME || !event.isSourceLoaded || baseMapReady) {
+  if (event.sourceId !== BASE_MAP_SOURCE_NAME || !event.isSourceLoaded || baseMapReady) {
     return
   }
 
-  scheduleBaseMapHealthCheck(BASEMAP_HEALTH_CONFIRM_DELAY_MS, {
+  scheduleBaseMapHealthCheck(BASE_MAP_HEALTH_CONFIRM_DELAY_MS, {
     recoverOnFailure: false
   })
 }
@@ -1892,6 +1849,11 @@ const handleMapIdle = () => {
   scheduleMapResize()
   scheduleMapRuntimeSync()
   markBaseMapReadyIfVisible()
+}
+
+const handleMapStyleLoad = () => {
+  scheduleMapRuntimeSync()
+  scheduleBaseMapHealthCheck()
 }
 
 const loadRegionHighlight = async (scope: RegionScope | null) => {
@@ -2093,6 +2055,7 @@ onMounted(async () => {
     })
     observeMapContainer()
     scheduleMapResize()
+    scheduleBaseMapHealthCheck()
   } catch {
     finishMapLoading()
     return
@@ -2104,7 +2067,7 @@ onMounted(async () => {
   window.addEventListener('resize', handleWindowResize)
   document.addEventListener('visibilitychange', refreshVisibleMapSource)
 
-  mapRef.value.on('style.load', scheduleMapRuntimeSync)
+  mapRef.value.on('style.load', handleMapStyleLoad)
   mapRef.value.on('styledata', scheduleMapRuntimeSync)
   mapRef.value.on('sourcedataloading', startBaseMapTileLoading)
   mapRef.value.on('sourcedata', handleBaseMapSourceData)
