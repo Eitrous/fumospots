@@ -1021,7 +1021,7 @@ onBeforeUnmount(() => {
         target="_blank"
         rel="noopener noreferrer"
       >
-        投稿须知
+        {{ t('submit.guideLink') }}
       </a>
 
       <button
@@ -1200,41 +1200,20 @@ onBeforeUnmount(() => {
             <input v-model="placeName" class="field-input" :placeholder="t('submit.publicPlacePlaceholder')">
           </label>
 
-          <p class="field-hint">{{ t('submit.locationFieldsHint') }}</p>
-
-          <div class="field-grid field-grid--two">
+          <div class="field-grid field-grid--three">
             <label class="field-label">
-              <span>{{ t('submit.countryLabel') }}</span>
-              <input
-                :value="countryName || ''"
-                class="field-input field-input--readonly"
-                :placeholder="t('submit.countryPlaceholder')"
-                readonly
-                aria-readonly="true"
-              >
+              <span>{{ t('submit.countryLabel') }}:</span>
+              <span>{{ countryName }}</span>
             </label>
             <label class="field-label">
-              <span>{{ t('submit.regionLabel') }}</span>
-              <input
-                :value="regionName || ''"
-                class="field-input field-input--readonly"
-                :placeholder="t('submit.regionPlaceholder')"
-                readonly
-                aria-readonly="true"
-              >
+              <span>{{ t('submit.regionLabel') }}:</span>
+              <span>{{ regionName }}</span>
+            </label> 
+            <label class="field-label">
+              <span>{{ t('submit.cityLabel') }}:</span>
+              <span>{{ cityName }}</span>
             </label>
           </div>
-
-          <label class="field-label">
-            <span>{{ t('submit.cityLabel') }}</span>
-            <input
-              :value="cityName || ''"
-              class="field-input field-input--readonly"
-              :placeholder="t('submit.cityPlaceholder')"
-              readonly
-              aria-readonly="true"
-            >
-          </label>
         </div>
       </div>
 

@@ -203,6 +203,7 @@
   "submit": {
     "eyebrow": "投稿",
     "title": "上传照片",
+    "guideLink": "投稿须知",
     "description": "公开页面只使用公开位置。",
     "photoSectionTitle": "选择照片",
     "photoSectionDescription": "如果图片里带有 EXIF 坐标和拍摄时间，系统会尝试自动读取；没有 EXIF 也可以在地图上手动选点。",
@@ -317,6 +318,7 @@
     "eyebrow": "建议箱",
     "title": "建议箱",
     "description": "非常感谢你的访问。如你所见，这个网站还有很多做的不够好的地方，因为老实说我本来只是做着玩玩的根本没想到会有这么多人来XDDDD。总之，如果你有想吐槽的地方或是好玩的想法，请写在下面，我给您磕一个。",
+    "guide": "一些常见问题及答复请见",
     "fieldLabel": "建议内容",
     "placeholder": "例如：希望增加XX功能、优化地图显示、改进投稿体验等。",
     "counter": "{count}/{max}",

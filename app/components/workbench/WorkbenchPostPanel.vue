@@ -27,6 +27,22 @@ const likeDialogCloseButton = ref<HTMLButtonElement | null>(null)
 const previouslyFocusedElement = ref<HTMLElement | null>(null)
 const likeDialogPreviouslyFocusedElement = ref<HTMLElement | null>(null)
 let loadSequence = 0
+let photoSwipeState: {
+  pointerId: number
+  target: 'hero' | 'viewer'
+  startX: number
+  startY: number
+  lastX: number
+  lastY: number
+  isHorizontalIntent: boolean
+} | null = null
+let suppressNextHeroClick = false
+let suppressNextViewerBackdropClick = false
+let heroClickSuppressTimer: ReturnType<typeof setTimeout> | null = null
+let viewerBackdropClickSuppressTimer: ReturnType<typeof setTimeout> | null = null
+
+const PHOTO_SWIPE_MIN_DISTANCE = 42
+const PHOTO_SWIPE_DIRECTION_RATIO = 1.35
 
 const displayPhotos = computed(() => {
   if (!post.value) {
@@ -174,6 +190,149 @@ const goNextPhoto = () => {
   }
 
   selectedPhotoIndex.value += 1
+}
+
+const photoIndicatorLabel = (index: number) => `${index + 1} / ${displayPhotos.value.length}`
+
+const isPhotoSwipeIgnoredTarget = (target: EventTarget | null) => {
+  return target instanceof Element && Boolean(target.closest('button, a, input, textarea, select'))
+}
+
+const setHeroClickSuppressed = () => {
+  suppressNextHeroClick = true
+  if (heroClickSuppressTimer) {
+    clearTimeout(heroClickSuppressTimer)
+  }
+  heroClickSuppressTimer = setTimeout(() => {
+    suppressNextHeroClick = false
+    heroClickSuppressTimer = null
+  }, 350)
+}
+
+const setViewerBackdropClickSuppressed = () => {
+  suppressNextViewerBackdropClick = true
+  if (viewerBackdropClickSuppressTimer) {
+    clearTimeout(viewerBackdropClickSuppressTimer)
+  }
+  viewerBackdropClickSuppressTimer = setTimeout(() => {
+    suppressNextViewerBackdropClick = false
+    viewerBackdropClickSuppressTimer = null
+  }, 350)
+}
+
+const isIntentionalHorizontalSwipe = (deltaX: number, deltaY: number) => {
+  return Math.abs(deltaX) >= PHOTO_SWIPE_MIN_DISTANCE
+    && Math.abs(deltaX) > Math.abs(deltaY) * PHOTO_SWIPE_DIRECTION_RATIO
+}
+
+const releasePhotoSwipePointer = (event: PointerEvent) => {
+  if (!(event.currentTarget instanceof HTMLElement)) {
+    return
+  }
+
+  try {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  } catch {
+    // Pointer capture can already be released by the browser during cancellation.
+  }
+}
+
+const handlePhotoSwipePointerDown = (event: PointerEvent, target: 'hero' | 'viewer') => {
+  if (!hasMultiplePhotos.value || event.button !== 0 || isPhotoSwipeIgnoredTarget(event.target)) {
+    return
+  }
+
+  photoSwipeState = {
+    pointerId: event.pointerId,
+    target,
+    startX: event.clientX,
+    startY: event.clientY,
+    lastX: event.clientX,
+    lastY: event.clientY,
+    isHorizontalIntent: false
+  }
+
+  if (event.currentTarget instanceof HTMLElement) {
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+}
+
+const handlePhotoSwipePointerMove = (event: PointerEvent) => {
+  if (!photoSwipeState || photoSwipeState.pointerId !== event.pointerId) {
+    return
+  }
+
+  photoSwipeState.lastX = event.clientX
+  photoSwipeState.lastY = event.clientY
+
+  const deltaX = photoSwipeState.lastX - photoSwipeState.startX
+  const deltaY = photoSwipeState.lastY - photoSwipeState.startY
+  if (!photoSwipeState.isHorizontalIntent && isIntentionalHorizontalSwipe(deltaX, deltaY)) {
+    photoSwipeState.isHorizontalIntent = true
+  }
+
+  if (photoSwipeState.isHorizontalIntent) {
+    event.preventDefault()
+  }
+}
+
+const handlePhotoSwipePointerUp = (event: PointerEvent) => {
+  if (!photoSwipeState || photoSwipeState.pointerId !== event.pointerId) {
+    return
+  }
+
+  const swipeTarget = photoSwipeState.target
+  const deltaX = event.clientX - photoSwipeState.startX
+  const deltaY = event.clientY - photoSwipeState.startY
+  const shouldChangePhoto = isIntentionalHorizontalSwipe(deltaX, deltaY)
+  photoSwipeState = null
+  releasePhotoSwipePointer(event)
+
+  if (!shouldChangePhoto) {
+    return
+  }
+
+  if (swipeTarget === 'hero') {
+    setHeroClickSuppressed()
+  } else {
+    setViewerBackdropClickSuppressed()
+  }
+
+  if (deltaX > 0) {
+    goPreviousPhoto()
+    return
+  }
+
+  goNextPhoto()
+}
+
+const handlePhotoSwipePointerCancel = (event: PointerEvent) => {
+  if (!photoSwipeState || photoSwipeState.pointerId !== event.pointerId) {
+    return
+  }
+
+  photoSwipeState = null
+  releasePhotoSwipePointer(event)
+}
+
+const handleHeroImageClick = () => {
+  if (suppressNextHeroClick) {
+    suppressNextHeroClick = false
+    return
+  }
+
+  openImageViewer()
+}
+
+const handleImageViewerBackdropClick = () => {
+  if (suppressNextViewerBackdropClick) {
+    suppressNextViewerBackdropClick = false
+    return
+  }
+
+  closeImageViewer()
 }
 
 const openImageViewer = () => {
@@ -388,6 +547,12 @@ onBeforeUnmount(() => {
     window.removeEventListener('keydown', handleViewerKeydown)
     window.removeEventListener('keydown', handleLikeDialogKeydown)
   }
+  if (heroClickSuppressTimer) {
+    clearTimeout(heroClickSuppressTimer)
+  }
+  if (viewerBackdropClickSuppressTimer) {
+    clearTimeout(viewerBackdropClickSuppressTimer)
+  }
 })
 </script>
 
@@ -428,6 +593,10 @@ onBeforeUnmount(() => {
         v-if="selectedPhotoUrl"
         class="workbench-detail-hero"
         :class="{ 'is-loading': !heroImageReady && !heroImageFailed, 'is-ready': heroImageReady }"
+        @pointerdown="handlePhotoSwipePointerDown($event, 'hero')"
+        @pointermove="handlePhotoSwipePointerMove"
+        @pointerup="handlePhotoSwipePointerUp"
+        @pointercancel="handlePhotoSwipePointerCancel"
       >
         <div
           v-if="selectedPhotoPreviewUrl"
@@ -462,10 +631,11 @@ onBeforeUnmount(() => {
           decoding="async"
           fetchpriority="high"
           loading="eager"
+          draggable="false"
           role="button"
           :tabindex="canOpenImageViewer ? 0 : -1"
           :aria-label="t('post.openPhotoViewer')"
-          @click="openImageViewer"
+          @click="handleHeroImageClick"
           @keydown.enter.prevent="openImageViewer"
           @keydown.space.prevent="openImageViewer"
           @load="handleHeroImageLoad"
@@ -493,6 +663,19 @@ onBeforeUnmount(() => {
             >
               <i class="fa-solid fa-chevron-right" aria-hidden="true" />
             </button>
+          </div>
+          <div class="workbench-detail-hero__indicators">
+            <button
+              v-for="(_, index) in displayPhotos"
+              :key="`photo-indicator-${index}`"
+              class="workbench-detail-hero__indicator"
+              :class="{ 'is-active': index === selectedPhotoIndex }"
+              type="button"
+              :title="photoIndicatorLabel(index)"
+              :aria-label="photoIndicatorLabel(index)"
+              :aria-current="index === selectedPhotoIndex ? 'true' : undefined"
+              @click="selectPhoto(index)"
+            />
           </div>
         </template>
       </div>
@@ -617,7 +800,11 @@ onBeforeUnmount(() => {
       role="dialog"
       aria-modal="true"
       :aria-label="post.title"
-      @click.self="closeImageViewer"
+      @click.self="handleImageViewerBackdropClick"
+      @pointerdown="handlePhotoSwipePointerDown($event, 'viewer')"
+      @pointermove="handlePhotoSwipePointerMove"
+      @pointerup="handlePhotoSwipePointerUp"
+      @pointercancel="handlePhotoSwipePointerCancel"
     >
       <button
         ref="imageViewerCloseButton"
@@ -667,6 +854,7 @@ onBeforeUnmount(() => {
           :alt="post.title"
           decoding="async"
           loading="eager"
+          draggable="false"
           @load="handleViewerImageLoad"
           @error="handleViewerImageError"
         >

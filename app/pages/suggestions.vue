@@ -96,7 +96,7 @@ const submitSuggestion = async () => {
         <h1 class="page-title">{{ t('suggestions.title') }}</h1>
         <p class="lede">{{ t('suggestions.description') }}</p>
       </div>
-      <div>一些常见问题及答复请见<a class="submit-guide-link" href="https://blog.0x-3f.com/2026/04/12/fumospots_manual/#FAQ">FAQ</a></div>
+      <div>{{ t('suggestions.guide') }}<a class="submit-guide-link" href="https://blog.0x-3f.com/2026/04/12/fumospots_manual/#FAQ">FAQ</a></div>
       <form class="suggestions-panel__form" @submit.prevent="submitSuggestion">
         <label class="field-label">
           <span>{{ t('suggestions.fieldLabel') }}</span>
