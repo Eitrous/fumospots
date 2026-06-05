@@ -1017,7 +1017,7 @@ onBeforeUnmount(() => {
     <div class="submit-top-tools">
       <a
         class="submit-guide-link"
-        href="https://blog.0x-3f.com/2026/04/12/fumospots_manual/#%E6%8A%95%E7%A8%BF%E9%A1%BB%E7%9F%A5"
+        href="https://blog.0x3f.io/2026/04/12/fumospots_manual/#%E6%8A%95%E7%A8%BF%E9%A1%BB%E7%9F%A5"
         target="_blank"
         rel="noopener noreferrer"
       >
