@@ -17,7 +17,10 @@ const themeInitScript = `(() => {
 
 useHead(() => ({
   htmlAttrs: localeHead.value.htmlAttrs,
-  link: localeHead.value.link,
+  link: [
+    ...(localeHead.value.link || []),
+    { rel: 'icon', type: 'image/png', href: '/favicon.png' }
+  ],
   meta: localeHead.value.meta,
   script: [
     {
