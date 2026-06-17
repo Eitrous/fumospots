@@ -204,7 +204,7 @@ const openFeedback = () => {
 
     <a
       class="workbench-home-stats__blog-link"
-      href="https://blog.0x3f.io/2026/04/12/fumospots_manual/"
+      href="https://blog.0x3f.io/blog/about-fumospots/"
       target="_blank"
       rel="noopener noreferrer"
       title="Blog"
