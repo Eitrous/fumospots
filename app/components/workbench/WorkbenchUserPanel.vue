@@ -13,10 +13,10 @@ const { getUserPage, invalidateUserPage } = useUserPageCache()
 
 const userPage = ref<PublicUserPage | null>(null)
 const loading = ref(true)
-const errorMessage = ref('')
+const errorMessage = useErrorNoticeState()
 const isEditingUsername = ref(false)
 const usernameDraft = ref('')
-const usernameError = ref('')
+const usernameError = useErrorNoticeState()
 const savingUsername = ref(false)
 let loadSequence = 0
 
@@ -239,8 +239,6 @@ onMounted(() => {
           </button>
         </template>
       </div>
-
-      <p v-if="usernameError" class="error-banner workbench-user__username-error">{{ usernameError }}</p>
     </div>
 
     <section class="workbench-stack-section workbench-user__posts">
@@ -252,7 +250,6 @@ onMounted(() => {
       </div>
 
       <p v-if="loading" class="support-copy">{{ t('user.loading') }}</p>
-      <p v-else-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
 
       <div v-else-if="userPage?.posts.length" class="workbench-user-post-list">
         <article v-for="post in userPage.posts" :key="post.id" class="workbench-user-post-row">
@@ -289,6 +286,18 @@ onMounted(() => {
             <span class="sr-only">{{ t('user.editPost') }}</span>
           </NuxtLink>
         </article>
+      </div>
+
+      <div v-else-if="errorMessage" class="empty-state empty-state--inline">
+        <button
+          class="ghost-button"
+          type="button"
+          :title="t('common.retry')"
+          @click="loadUserPage"
+        >
+          <i class="button-icon fa-solid fa-rotate-right" aria-hidden="true" />
+          <span>{{ t('common.retry') }}</span>
+        </button>
       </div>
 
       <div v-else class="empty-state empty-state--inline">
@@ -328,10 +337,6 @@ onMounted(() => {
   width: 2.3rem;
   height: 2.3rem;
   border-radius: 0.65rem;
-}
-
-.workbench-user__username-error {
-  margin: 0;
 }
 
 @media (max-width: 720px) {

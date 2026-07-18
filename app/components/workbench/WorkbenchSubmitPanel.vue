@@ -93,7 +93,7 @@ const deletingPost = ref(false)
 const deleteDialogOpen = ref(false)
 const uploadProgressStepCount = ref(0)
 const uploadProgressStepDone = ref(0)
-const errorMessage = ref('')
+const errorMessage = useErrorNoticeState()
 const successMessage = ref('')
 
 const uploadProgressPercent = computed(() => {
@@ -1280,7 +1280,6 @@ onBeforeUnmount(() => {
     </div>
 
     <p v-if="successMessage" class="success-banner">{{ successMessage }}</p>
-    <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
   </section>
 </template>
 
@@ -1307,7 +1306,7 @@ onBeforeUnmount(() => {
 
 .submit-guide-link:hover,
 .submit-guide-link:focus-visible {
-  color: var(--accent-deep);
+  color: var(--accent);
 }
 
 .workbench-delete-trigger {
@@ -1322,6 +1321,12 @@ onBeforeUnmount(() => {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   row-gap: 0.75rem;
+  border-color: var(--danger);
+}
+
+.workbench-delete-dialog .workbench-like-dialog__icon,
+.workbench-delete-dialog .workbench-delete-dialog__title {
+  color: var(--danger);
 }
 
 .workbench-delete-dialog__content {
@@ -1349,9 +1354,9 @@ onBeforeUnmount(() => {
 }
 
 .field-input--readonly {
-  color: var(--ink-soft);
+  color: var(--ink-muted);
   cursor: default;
-  background: rgba(255, 255, 255, 0.44);
+  background: var(--bg);
 }
 
 .submit-search-row {
@@ -1365,32 +1370,17 @@ onBeforeUnmount(() => {
   width: 3.1rem;
   min-height: 3.25rem;
   border-radius: 18px;
-  border: 1px solid rgba(29, 23, 18, 0.08);
-  background: rgba(255, 255, 255, 0.56);
-  box-shadow: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .submit-search-row__button:hover,
 .submit-search-row__button:focus-visible {
-  background: rgba(255, 255, 255, 0.78);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .field-input--readonly:focus {
   border-color: var(--border);
-  box-shadow: none;
-}
-
-html[data-theme="dark"] .submit-search-row__button {
-  border-color: var(--border);
-  background: rgba(21, 27, 32, 0.66);
-}
-
-html[data-theme="dark"] .submit-search-row__button:hover,
-html[data-theme="dark"] .submit-search-row__button:focus-visible {
-  background: rgba(32, 39, 46, 0.82);
-}
-
-html[data-theme="dark"] .field-input--readonly {
-  background: rgba(255, 255, 255, 0.03);
 }
 </style>

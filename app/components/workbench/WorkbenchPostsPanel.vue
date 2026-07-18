@@ -13,8 +13,8 @@ const nextOffset = ref<number | null>(0)
 const sortOrder = ref<'asc' | 'desc'>('desc')
 const loading = ref(true)
 const loadingMore = ref(false)
-const errorMessage = ref('')
-const loadMoreErrorMessage = ref('')
+const errorMessage = useErrorNoticeState()
+const loadMoreErrorMessage = useErrorNoticeState()
 let loadSequence = 0
 
 const visibleCount = computed(() => posts.value.length)
@@ -162,7 +162,6 @@ onMounted(() => {
         </article>
         <span class="sr-only">{{ t('allPosts.loading') }}</span>
       </div>
-      <p v-else-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
 
       <div v-else-if="posts.length" class="workbench-user-post-list">
         <article v-for="post in posts" :key="post.id" class="workbench-user-post-row">
@@ -202,10 +201,18 @@ onMounted(() => {
           />
           <span>{{ loadingMore ? t('allPosts.loadingMore') : t('allPosts.loadMore') }}</span>
         </button>
+      </div>
 
-        <p v-if="loadMoreErrorMessage" class="error-banner">
-          {{ loadMoreErrorMessage }}
-        </p>
+      <div v-else-if="errorMessage" class="empty-state empty-state--inline">
+        <button
+          class="ghost-button"
+          type="button"
+          :title="t('common.retry')"
+          @click="loadPosts()"
+        >
+          <i class="button-icon fa-solid fa-rotate-right" aria-hidden="true" />
+          <span>{{ t('common.retry') }}</span>
+        </button>
       </div>
 
       <div v-else class="empty-state empty-state--inline">
@@ -231,31 +238,28 @@ onMounted(() => {
   gap: 0.45rem;
   min-height: 2.25rem;
   padding: 0.5rem 0.72rem;
-  border: 0;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--surface);
   color: var(--ink);
   font-size: 0.82rem;
   font-weight: 700;
   white-space: nowrap;
-  transition:
-    border-color 180ms var(--motion-smooth),
-    background 180ms var(--motion-smooth),
-    color 180ms var(--motion-smooth),
-    transform 180ms var(--motion-smooth);
+  transition: transform 180ms var(--motion-smooth);
 }
 
 .workbench-posts__sort-button:hover,
 .workbench-posts__sort-button:focus-visible {
-  border-color: rgba(22, 146, 95, 0.34);
-  background: rgba(22, 146, 95, 0.08);
-  color: var(--accent-deep);
+  border-color: var(--accent);
+  color: var(--accent);
   outline: 0;
 }
 
 .workbench-posts__sort-button:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--ink-muted);
   transform: none;
 }
 
@@ -273,37 +277,27 @@ onMounted(() => {
   justify-self: center;
   margin-top: 1rem;
   padding: 0.72rem 1rem;
-  border: 0;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--surface);
   color: var(--ink);
   font-weight: 700;
-  transition:
-    border-color 180ms var(--motion-smooth),
-    background 180ms var(--motion-smooth),
-    color 180ms var(--motion-smooth);
+  transition: transform 180ms var(--motion-smooth);
 }
 
 .workbench-posts__load-more:hover,
 .workbench-posts__load-more:focus-visible {
-  color: var(--accent-deep);
+  border-color: var(--accent);
+  color: var(--accent);
   outline: 0;
 }
 
 .workbench-posts__load-more:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--ink-muted);
   transform: none;
-}
-
-html[data-theme="dark"] .workbench-posts__load-more {
-  border-color: var(--border);
-  background: rgba(255, 255, 255, 0.04);
-}
-
-html[data-theme="dark"] .workbench-posts__sort-button {
-  border-color: var(--border);
-  background: rgba(255, 255, 255, 0.04);
 }
 
 @media (max-width: 720px) {

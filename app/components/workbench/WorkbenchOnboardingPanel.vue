@@ -11,7 +11,7 @@ const auth = useAuthState()
 const { t } = useI18n()
 const username = ref('')
 const saving = ref(false)
-const errorMessage = ref('')
+const errorMessage = useErrorNoticeState()
 
 const fallbackNextPath = computed(() => props.nextPath || '/')
 
@@ -104,7 +104,5 @@ useWorkbenchToolbarAction(computed(() => ({
         @keyup.enter="submitUsername"
       >
     </label>
-
-    <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
   </section>
 </template>

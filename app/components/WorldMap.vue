@@ -93,7 +93,9 @@ type DisplayClusterState = {
 
 const emit = defineEmits<{
   'select-post': [postId: number]
+  'fly-completed': []
 }>()
+
 
 const { t, locale } = useI18n()
 const { isDark } = useTheme()
@@ -122,8 +124,8 @@ const PREVIEW_SHEET_CLOSE_THRESHOLD_PX = 92
 const REGION_FIT_DURATION_MS = 720
 const REGION_FIT_MAX_ZOOM = 10
 const SELECTED_POST_FAR_DISTANCE_DEGREES = 26
-const SELECTED_POST_FAR_FOCUS_DURATION_MS = 1450
-const SELECTED_POST_FOCUS_DURATION_MS = 1040
+const SELECTED_POST_FAR_FOCUS_DURATION_MS = 3200
+const SELECTED_POST_FOCUS_DURATION_MS = 1600
 const SELECTED_POST_FOCUS_MIN_ZOOM = 6.8
 const SELECTED_POST_FOCUS_OVERVIEW_ZOOM = 4.2
 const DESKTOP_PREVIEW_ANCHOR_GAP_PX = 20
@@ -754,6 +756,7 @@ const getSelectedPostCoordinates = async (postId: number): Promise<[number, numb
 
 const focusSelectedPost = async (postId: number) => {
   if (!mapRef.value || !postId) {
+    emit('fly-completed')
     return
   }
 
@@ -761,6 +764,7 @@ const focusSelectedPost = async (postId: number) => {
   const coordinates = await getSelectedPostCoordinates(postId)
 
   if (!coordinates || currentSequence !== selectedPostFocusSequence || !mapRef.value) {
+    emit('fly-completed')
     return
   }
 
@@ -775,6 +779,12 @@ const focusSelectedPost = async (postId: number) => {
     distanceDegrees >= SELECTED_POST_FAR_DISTANCE_DEGREES
     && Math.min(currentZoom, targetZoom) > SELECTED_POST_FOCUS_OVERVIEW_ZOOM
   )
+
+  mapRef.value.once('moveend', () => {
+    if (currentSequence === selectedPostFocusSequence) {
+      emit('fly-completed')
+    }
+  })
 
   mapRef.value.flyTo({
     center: coordinates,
@@ -1347,7 +1357,7 @@ const ensurePostLayers = () => {
   }
 
   const sourceName = 'posts'
-  const primaryColor = isDark.value ? '#58c78f' : '#16925f'
+  const primaryColor = isDark.value ? '#31a567' : '#248E55'
   const contrastColor = isDark.value ? '#0f120e' : '#f7f3ec'
   const activeHaloColor = isDark.value ? 'rgba(88, 199, 143, 0.24)' : 'rgba(22, 146, 95, 0.2)'
 
@@ -2290,11 +2300,10 @@ onBeforeUnmount(() => {
   z-index: 30;
   width: min(18rem, calc(100% - 1.5rem));
   overflow: hidden;
-  border: 1px solid rgba(29, 23, 18, 0.12);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(241, 240, 236, 0.94);
-  box-shadow: 0 18px 42px rgba(18, 14, 10, 0.18);
-  backdrop-filter: blur(18px);
+  background: var(--surface);
+  color: var(--ink);
 }
 
 .map-preview-list {
@@ -2312,13 +2321,10 @@ onBeforeUnmount(() => {
   width: 100%;
   padding: 0.9rem;
   border: 0;
-  border-bottom: 1px solid rgba(29, 23, 18, 0.08);
+  border-bottom: 1px solid var(--border);
   background: transparent;
   color: var(--ink);
   text-align: left;
-  transition:
-    background-color 180ms var(--motion-smooth),
-    color 180ms var(--motion-smooth);
 }
 
 .map-preview-item:last-child {
@@ -2327,8 +2333,8 @@ onBeforeUnmount(() => {
 
 .map-preview-item:hover,
 .map-preview-item:focus-visible {
-  background: rgba(22, 146, 95, 0.08);
-  color: var(--ink);
+  background: var(--accent);
+  color: var(--on-accent);
   outline: 0;
 }
 
@@ -2339,7 +2345,7 @@ onBeforeUnmount(() => {
   place-items: center;
   overflow: hidden;
   border-radius: 8px;
-  background: rgba(29, 23, 18, 0.08);
+  background: var(--bg);
   color: var(--ink-muted);
 }
 
@@ -2370,8 +2376,7 @@ onBeforeUnmount(() => {
   z-index: 92;
   display: flex;
   align-items: flex-end;
-  background: rgba(18, 16, 14, 0.18);
-  backdrop-filter: blur(4px);
+  background: var(--bg);
 }
 
 .map-preview-sheet {
@@ -2379,10 +2384,10 @@ onBeforeUnmount(() => {
   --preview-sheet-enter-offset: 0px;
   width: 100%;
   max-height: min(70svh, 38rem);
-  border-top: 1px solid rgba(29, 23, 18, 0.08);
+  border-top: 1px solid var(--border);
   border-radius: 22px 22px 0 0;
-  background: rgba(241, 240, 236, 0.96);
-  box-shadow: 0 -18px 42px rgba(13, 11, 10, 0.16);
+  background: var(--surface);
+  color: var(--ink);
   opacity: 1;
   transform: translateY(var(--preview-sheet-enter-offset)) translateY(var(--preview-sheet-drag-offset));
   transition:
@@ -2407,7 +2412,7 @@ onBeforeUnmount(() => {
   width: 2.35rem;
   height: 0.22rem;
   border-radius: 999px;
-  background: rgba(29, 23, 18, 0.24);
+  background: var(--border);
 }
 
 .map-preview-sheet__body {
@@ -2419,48 +2424,9 @@ onBeforeUnmount(() => {
   max-height: min(62svh, 34rem);
 }
 
-.map-preview-popover.is-dark {
-  border-color: rgba(136, 154, 166, 0.16);
-  background: rgba(12, 15, 17, 0.92);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
-}
-
-.map-preview-popover.is-dark .map-preview-item,
-.map-preview-sheet.is-dark .map-preview-item {
-  border-bottom-color: rgba(136, 154, 166, 0.14);
-}
-
-.map-preview-popover.is-dark .map-preview-item:hover,
-.map-preview-popover.is-dark .map-preview-item:focus-visible,
-.map-preview-sheet.is-dark .map-preview-item:hover,
-.map-preview-sheet.is-dark .map-preview-item:focus-visible {
-  background: rgba(88, 199, 143, 0.1);
-}
-
-.map-preview-popover.is-dark .map-preview-item__thumb,
-.map-preview-sheet.is-dark .map-preview-item__thumb {
-  background: rgba(136, 154, 166, 0.14);
-}
-
-.map-preview-sheet-backdrop.is-dark {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.map-preview-sheet.is-dark {
-  border-top-color: rgba(136, 154, 166, 0.14);
-  background: rgba(31, 39, 46, 0.96);
-  box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.28);
-}
-
-.map-preview-sheet.is-dark .map-preview-sheet__handle span {
-  background: rgba(204, 215, 222, 0.28);
-}
-
 .map-preview-sheet-enter-active,
 .map-preview-sheet-leave-active {
-  transition:
-    opacity 220ms var(--motion-smooth),
-    backdrop-filter 220ms var(--motion-smooth);
+  transition: opacity 220ms var(--motion-smooth);
 }
 
 .map-preview-sheet-enter-active .map-preview-sheet,

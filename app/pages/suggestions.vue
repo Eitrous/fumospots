@@ -19,7 +19,7 @@ useHead({
 
 const content = ref('')
 const submitting = ref(false)
-const errorMessage = ref('')
+const errorMessage = useErrorNoticeState()
 const successMessage = ref('')
 
 const contentLength = computed(() => content.value.length)
@@ -131,7 +131,6 @@ const submitSuggestion = async () => {
       </form>
 
       <p v-if="successMessage" class="success-banner">{{ successMessage }}</p>
-      <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
     </section>
   </main>
 </template>
@@ -151,6 +150,6 @@ const submitSuggestion = async () => {
 
 .submit-guide-link:hover,
 .submit-guide-link:focus-visible {
-  color: var(--accent-deep);
+  color: var(--accent);
 }
 </style>

@@ -2,10 +2,6 @@
 import type { RandomPostResponse, WorkbenchPanel } from '~~/shared/fumo'
 
 type MobileDrawerState = 'peek' | 'workbench' | 'detail'
-type WorkbenchNotice = {
-  message: string
-  icon: string
-}
 
 const { t } = useI18n()
 const { isDark, toggleTheme } = useTheme()
@@ -26,6 +22,7 @@ const router = useRouter()
 const auth = useAuthState()
 const toolbarController = provideWorkbenchToolbarActionController()
 const { prefetchPostDetail } = usePostDetailCache()
+const { showNotice: openWorkbenchNotice } = useAppNotice()
 
 const isMobile = ref(false)
 const mobileDrawerState = ref<MobileDrawerState>('peek')
@@ -33,8 +30,6 @@ const mobileDrawerDragOffset = ref(0)
 const mobileDrawerDragging = ref(false)
 const mobileDrawerPeeking = computed(() => isMobile.value && mobileDrawerState.value === 'peek')
 const clientToolbarReady = ref(false)
-const workbenchNotice = ref<WorkbenchNotice | null>(null)
-const workbenchNoticeOpen = computed(() => Boolean(workbenchNotice.value))
 const randomPostLoading = ref(false)
 
 let viewportQuery: MediaQueryList | null = null
@@ -45,7 +40,8 @@ let mobileDrawerWasDragged = false
 let mobileDrawerStartedFromToolbar = false
 let suppressNextMobileDrawerClick = false
 let mobileDrawerClickSuppressionTimer: ReturnType<typeof setTimeout> | null = null
-let workbenchNoticeTimer: ReturnType<typeof setTimeout> | null = null
+let preserveMobileDrawerState = false
+let pendingRandomPostFlyComplete = false
 
 const workbenchState = computed(() => resolveWorkbenchState(route.query))
 const currentPanel = computed(() => workbenchState.value.panel)
@@ -57,7 +53,6 @@ const nextPath = computed(() => workbenchState.value.nextPath)
 const submitPath = computed(() => router.resolve(createWorkbenchLocation('submit')).fullPath)
 const isDetailPanel = computed(() => currentPanel.value === 'post')
 const showHomeBrand = computed(() => currentPanel.value === 'info')
-const brandImageSrc = computed(() => isDark.value ? '/fumospots-brand-dark.svg' : '/fumospots-brand.svg')
 const panelKey = computed(() => {
   return (currentPanel.value === 'post' || currentPanel.value === 'edit')
     ? `${currentPanel.value}-${selectedPostId.value}`
@@ -160,43 +155,11 @@ const resetMobileDrawerDrag = () => {
   mobileDrawerStartedFromToolbar = false
 }
 
-const closeWorkbenchNotice = () => {
-  if (workbenchNoticeTimer) {
-    clearTimeout(workbenchNoticeTimer)
-    workbenchNoticeTimer = null
-  }
-
-  workbenchNotice.value = null
-}
-
-const openWorkbenchNotice = (notice: WorkbenchNotice) => {
-  if (!notice.message) {
-    return
-  }
-
-  closeWorkbenchNotice()
-  workbenchNotice.value = notice
-
-  if (import.meta.client) {
-    workbenchNoticeTimer = setTimeout(() => {
-      closeWorkbenchNotice()
-    }, 3200)
-  }
-}
-
-const handleWorkbenchNoticeKeydown = (event: KeyboardEvent) => {
-  if (!workbenchNoticeOpen.value || event.key !== 'Escape') {
-    return
-  }
-
-  event.preventDefault()
-  closeWorkbenchNotice()
-}
-
 const handleSubmissionSuccess = (message: string) => {
   openWorkbenchNotice({
     message,
-    icon: 'fa-circle-check'
+    icon: 'fa-circle-check',
+    tone: 'success'
   })
 }
 
@@ -243,10 +206,10 @@ async function openInfoPanel() {
 
 async function goBackPanel() {
   if (import.meta.client && window.history.length > 1) {
+    preserveMobileDrawerState = true
     router.back()
     return
   }
-
   await openInfoPanel()
 }
 
@@ -317,15 +280,22 @@ async function openRandomPost() {
     ) {
       openWorkbenchNotice({
         message: t('post.errors.randomFailed'),
-        icon: 'fa-triangle-exclamation'
+        icon: 'fa-triangle-exclamation',
+        tone: 'error'
       })
       return
     }
 
     prefetchPostDetail(targetPostId)
 
+    if (isMobile.value) {
+      pendingRandomPostFlyComplete = true
+      mobileDrawerState.value = 'peek'
+    }
+
     await openPanel('post', {
-      postId: targetPostId
+      postId: targetPostId,
+      revealMobile: false
     })
   } catch (error) {
     const statusCode = getFetchStatusCode(error)
@@ -334,7 +304,8 @@ async function openRandomPost() {
       message: statusCode === 404
         ? t('post.errors.noRandomPost')
         : normalizeApiErrorMessage(error, t('post.errors.randomFailed')),
-      icon: statusCode === 404 ? 'fa-circle-info' : 'fa-triangle-exclamation'
+      icon: statusCode === 404 ? 'fa-circle-info' : 'fa-triangle-exclamation',
+      tone: statusCode === 404 ? 'default' : 'error'
     })
   } finally {
     randomPostLoading.value = false
@@ -599,6 +570,14 @@ function handleMobileDrawerEscape() {
   }
 }
 
+function handleFlyCompleted() {
+  if (!import.meta.client || !isMobile.value || !pendingRandomPostFlyComplete) {
+    return
+  }
+  pendingRandomPostFlyComplete = false
+  mobileDrawerState.value = mobileDrawerStateForPanel(currentPanel.value)
+}
+
 watch(
   () => currentPanel.value,
   (panel) => {
@@ -606,24 +585,20 @@ watch(
       return
     }
 
+    if (pendingRandomPostFlyComplete) {
+      if (panel === 'post') {
+        pendingRandomPostFlyComplete = false
+      } else {
+        resetMobileDrawerDrag()
+        return
+      }
+    }
+
     mobileDrawerState.value = mobileDrawerStateForPanel(panel)
     resetMobileDrawerDrag()
   },
   { immediate: true }
 )
-
-watch(workbenchNoticeOpen, (isOpen) => {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  if (isOpen) {
-    window.addEventListener('keydown', handleWorkbenchNoticeKeydown)
-    return
-  }
-
-  window.removeEventListener('keydown', handleWorkbenchNoticeKeydown)
-})
 
 onMounted(() => {
   clientToolbarReady.value = true
@@ -638,16 +613,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   viewportQuery?.removeEventListener('change', syncViewportMode)
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('keydown', handleWorkbenchNoticeKeydown)
-  }
 
   if (mobileDrawerClickSuppressionTimer) {
     clearTimeout(mobileDrawerClickSuppressionTimer)
-  }
-
-  if (workbenchNoticeTimer) {
-    clearTimeout(workbenchNoticeTimer)
   }
 })
 </script>
@@ -695,12 +663,12 @@ onBeforeUnmount(() => {
               @keydown.enter.stop.prevent="handleMobileDrawerKeydown"
               @keydown.space.stop.prevent="handleMobileDrawerKeydown"
             >
-              <img
+              <FumospotsBrandLogo
                 class="workbench-brand__image"
-                :src="brandImageSrc"
-                :alt="t('common.brand')"
+                role="img"
+                :aria-label="t('common.brand')"
                 draggable="false"
-              >
+              />
             </div>
             <div
               v-else-if="isDetailPanel"
@@ -871,35 +839,9 @@ onBeforeUnmount(() => {
         :selected-post-id="selectedPostId"
         :highlight-region-scope="currentPanel === 'region' ? selectedRegionScope : null"
         @select-post="handleMarkerSelection"
+        @fly-completed="handleFlyCompleted"
       />
     </section>
 
-    <Transition name="workbench-notice">
-      <div
-        v-if="workbenchNotice"
-        class="workbench-like-dialog workbench-notice"
-        role="status"
-        aria-live="polite"
-        @click.self="closeWorkbenchNotice"
-      >
-        <div class="workbench-like-dialog__panel workbench-notice__panel">
-          <i
-            class="workbench-like-dialog__icon fa-solid"
-            :class="workbenchNotice.icon"
-            aria-hidden="true"
-          />
-          <p>{{ workbenchNotice.message }}</p>
-          <button
-            class="workbench-icon-button workbench-like-dialog__close"
-            type="button"
-            :aria-label="t('common.close')"
-            @click="closeWorkbenchNotice"
-          >
-            <i class="fa-solid fa-xmark" aria-hidden="true" />
-            <span class="sr-only">{{ t('common.close') }}</span>
-          </button>
-        </div>
-      </div>
-    </Transition>
   </main>
 </template>

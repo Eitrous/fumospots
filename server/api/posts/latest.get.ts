@@ -11,7 +11,7 @@ type LatestPostRow = {
   place_name: string | null
 }
 
-const LATEST_POSTS_LIMIT = 4
+const LATEST_POSTS_LIMIT = 3
 
 export default defineEventHandler(async (event): Promise<PublicLatestPostsResponse> => {
   await enforceRateLimit(event, 'mapIp', getRateLimitIdentifier(event))

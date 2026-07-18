@@ -22,7 +22,7 @@ const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const submitting = ref(false)
-const errorMessage = ref('')
+const errorMessage = useErrorNoticeState()
 const successMessage = ref('')
 
 const fallbackNextPath = computed(() => props.nextPath || '/')
@@ -30,6 +30,7 @@ const requiresPassword = computed(() => mode.value !== null && mode.value !== 'l
 const requiresConfirmPassword = computed(() => mode.value === 'register')
 const hasSelectedMode = computed(() => mode.value !== null)
 const isRegisterSection = computed(() => authSection.value === 'register')
+const formStackRef = ref<HTMLElement | null>(null)
 
 const resetLocalState = () => {
   mode.value = null
@@ -169,6 +170,10 @@ const setMode = (nextMode: AuthMode) => {
   mode.value = nextMode
   errorMessage.value = ''
   successMessage.value = ''
+
+  nextTick(() => {
+    formStackRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
 }
 
 const setSection = (nextSection: AuthSection) => {
@@ -304,7 +309,7 @@ useWorkbenchToolbarAction(computed(() => ({
 </script>
 
 <template>
-  <section class="workbench-panel workbench-panel--poster">
+  <section class="workbench-panel workbench-panel--poster workbench-login-panel">
     <span class="eyebrow">{{ t('auth.eyebrow') }}</span>
     <h2 class="workbench-panel__title workbench-panel__title--poster">{{ panelTitle }}</h2>
     <p class="workbench-panel__copy workbench-panel__copy--poster">{{ panelDescription }}</p>
@@ -361,7 +366,7 @@ useWorkbenchToolbarAction(computed(() => ({
       </button>
     </div>
 
-    <div v-if="hasSelectedMode" class="auth-form-stack">
+    <div v-if="hasSelectedMode" ref="formStackRef" class="auth-form-stack">
       <label class="field-label">
         <span>{{ t('auth.emailLabel') }}</span>
         <input
@@ -400,6 +405,5 @@ useWorkbenchToolbarAction(computed(() => ({
     </div>
 
     <p v-if="successMessage" class="success-banner">{{ successMessage }}</p>
-    <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
   </section>
 </template>

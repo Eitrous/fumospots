@@ -14,7 +14,7 @@ const { getRegionPage } = useRegionPageCache()
 
 const regionPage = ref<PublicRegionPage | null>(null)
 const loading = ref(true)
-const errorMessage = ref('')
+const errorMessage = useErrorNoticeState()
 let loadSequence = 0
 
 const fallbackTitle = computed(() => {
@@ -150,7 +150,6 @@ onMounted(() => {
       </div>
 
       <p v-if="loading" class="support-copy">{{ t('region.loading') }}</p>
-      <p v-else-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
 
       <div v-else-if="regionPage?.posts.length" class="workbench-user-post-list">
         <article v-for="post in regionPage.posts" :key="post.id" class="workbench-user-post-row">
@@ -182,6 +181,18 @@ onMounted(() => {
         </article>
       </div>
 
+      <div v-else-if="errorMessage" class="empty-state empty-state--inline">
+        <button
+          class="ghost-button"
+          type="button"
+          :title="t('common.retry')"
+          @click="loadRegionPage"
+        >
+          <i class="button-icon fa-solid fa-rotate-right" aria-hidden="true" />
+          <span>{{ t('common.retry') }}</span>
+        </button>
+      </div>
+
       <div v-else class="empty-state empty-state--inline">
         <h2>{{ t('region.emptyTitle') }}</h2>
         <p>{{ t('region.emptyDescription') }}</p>
@@ -209,7 +220,7 @@ onMounted(() => {
 }
 
 .workbench-region__sort .workbench-icon-button.is-active {
-  color: var(--accent-deep);
+  color: var(--accent);
 }
 
 @media (max-width: 720px) {

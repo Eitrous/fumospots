@@ -12,7 +12,7 @@ const { formatDateTime } = useFormatters({ locale: 'zh-CN' })
 
 const suggestions = ref<AdminSuggestionItem[]>([])
 const loading = ref(true)
-const errorMessage = ref('')
+const errorMessage = useErrorNoticeState()
 
 const displayAuthor = (item: AdminSuggestionItem) => {
   if (item.author.username) {
@@ -28,6 +28,7 @@ const loadSuggestions = async () => {
   }
 
   loading.value = true
+  errorMessage.value = ''
 
   try {
     suggestions.value = await $fetch<AdminSuggestionItem[]>('/api/admin/suggestions', {
@@ -80,9 +81,7 @@ watch(
     </section>
 
     <section class="admin-panel admin-suggestion-panel">
-      <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
-
-      <ul v-else-if="suggestions.length" class="admin-suggestion-list">
+      <ul v-if="suggestions.length" class="admin-suggestion-list">
         <li
           v-for="item in suggestions"
           :key="item.id"
@@ -97,8 +96,17 @@ watch(
         </li>
       </ul>
 
-      <p v-else-if="!loading" class="admin-status">暂无建议。</p>
-      <p v-else class="admin-status">正在加载建议...</p>
+      <p v-else-if="!loading && !errorMessage" class="admin-status">暂无建议。</p>
+      <p v-else-if="loading" class="admin-status">正在加载建议...</p>
+      <button
+        v-else
+        class="admin-text-button"
+        type="button"
+        @click="loadSuggestions"
+      >
+        <i class="button-icon fa-solid fa-rotate-right" aria-hidden="true" />
+        <span>重试</span>
+      </button>
     </section>
   </main>
 </template>

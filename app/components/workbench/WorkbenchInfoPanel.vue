@@ -5,7 +5,7 @@ import type {
 } from "~~/shared/fumo";
 
 const { locale, t } = useI18n();
-const LATEST_POSTS_SKELETON_ROWS = 4;
+const LATEST_POSTS_SKELETON_ROWS = 3;
 const {
   data: mapCount,
   error: mapCountError,

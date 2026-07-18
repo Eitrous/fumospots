@@ -36,5 +36,6 @@ useHead(() => ({
   <NuxtLayout>
     <NuxtRouteAnnouncer />
     <NuxtPage />
+    <AppNotice />
   </NuxtLayout>
 </template>

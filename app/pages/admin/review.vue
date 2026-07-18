@@ -35,7 +35,7 @@ const reviewNote = ref('')
 const loading = ref(true)
 const submitting = ref(false)
 const feedbackMessage = ref('')
-const errorMessage = ref('')
+const errorMessage = useErrorNoticeState()
 
 const locationBackfillStats = ref<LocationBackfillStatsResponse | null>(null)
 const locationBackfillStatsLoading = ref(false)
@@ -43,7 +43,7 @@ const locationBackfillItems = ref<AdminLocationBackfillItem[]>([])
 const locationBackfillLoading = ref(false)
 const locationBackfillLoadingMore = ref(false)
 const locationBackfillSaving = ref(false)
-const locationBackfillErrorMessage = ref('')
+const locationBackfillErrorMessage = useErrorNoticeState()
 const locationBackfillFeedbackMessage = ref('')
 const locationBackfillNextCursor = ref<number | null>(null)
 const locationBackfillHasMore = ref(false)
@@ -530,7 +530,6 @@ watch(
         </div>
 
         <p v-if="feedbackMessage" class="success-banner">{{ feedbackMessage }}</p>
-        <p v-if="errorMessage" class="error-banner">{{ errorMessage }}</p>
       </section>
     </section>
 
@@ -722,7 +721,6 @@ watch(
 
           <p v-if="locationBackfillLoadingMore" class="admin-status">正在加载更多候选...</p>
           <p v-if="locationBackfillFeedbackMessage" class="success-banner">{{ locationBackfillFeedbackMessage }}</p>
-          <p v-if="locationBackfillErrorMessage" class="error-banner">{{ locationBackfillErrorMessage }}</p>
         </section>
       </section>
     </section>
