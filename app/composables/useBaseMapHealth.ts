@@ -1,7 +1,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
 export const BASE_MAP_SOURCE_NAME = 'protomaps'
-export const BASE_MAP_HEALTH_CHECK_DELAY_MS = 4200
+export const BASE_MAP_HEALTH_CHECK_DELAY_MS = 6400
 export const BASE_MAP_HEALTH_CONFIRM_DELAY_MS = 220
 export const BASE_MAP_RECOVERY_MAX_ATTEMPTS = 3
 export const BASE_MAP_RECOVERY_RETRY_DELAYS_MS = [600, 1800, 4200] as const
