@@ -3,6 +3,7 @@ import type { GeoBounds, RegionGeometryResponse, RegionScope } from '~~/shared/f
 import {
   fetchSearchGeocodeEntries,
   getPreferredGeocodeAcceptLanguage,
+  isSouthTibetLocationScope,
   normalizeGeocodeResult,
   normalizeLocationScopeForLocale,
   type NominatimSearchEntry
@@ -112,6 +113,14 @@ const pickGeometry = (entry: NominatimSearchEntry) => {
   return null
 }
 
+const buildRegionSearchQuery = (scope: RegionScope) => {
+  if (isSouthTibetLocationScope(scope)) {
+    return ['India', 'Arunachal Pradesh', scope.cityName].filter(Boolean).join(' ')
+  }
+
+  return [scope.countryName, scope.regionName, scope.cityName].filter(Boolean).join(' ')
+}
+
 export default defineEventHandler(async (event): Promise<RegionGeometryResponse> => {
   const config = useRuntimeConfig(event)
   const query = getQuery(event)
@@ -141,7 +150,7 @@ export default defineEventHandler(async (event): Promise<RegionGeometryResponse>
   try {
     entries = await fetchSearchGeocodeEntries(
       event,
-      [scope.countryName, scope.regionName, scope.cityName].filter(Boolean).join(' '),
+      buildRegionSearchQuery(scope),
       {
         limit: 3,
         polygonGeoJson: true,

@@ -33,9 +33,57 @@ const COUNTRY_PLACE_FILTER: unknown[] = [
   ['==', 'kind', 'country'],
   ['==', 'pmap:kind', 'country']
 ]
+const SOUTH_TIBET_WIKIDATA_ID = 'Q1162'
+const SOUTH_TIBET_ENGLISH_NAME = 'Arunachal Pradesh'
+const SOUTH_TIBET_HANS_NAME = '藏南地区'
+const SOUTH_TIBET_HANT_NAME = '藏南地區'
+const SOUTH_TIBET_JAPANESE_NAME = 'アルナーチャル・プラデーシュ州'
+const SOUTH_TIBET_REGION_MATCH_FILTER: unknown[] = [
+  'any',
+  ['==', 'wikidata', SOUTH_TIBET_WIKIDATA_ID],
+  ['==', 'wikidata_id', SOUTH_TIBET_WIKIDATA_ID],
+  ['==', 'name:en', SOUTH_TIBET_ENGLISH_NAME],
+  ['==', 'name:zh-Hans', SOUTH_TIBET_HANS_NAME],
+  ['==', 'name:zh-Hant', SOUTH_TIBET_HANT_NAME],
+  ['==', 'name:ja', SOUTH_TIBET_JAPANESE_NAME],
+  [
+    'in',
+    'name',
+    SOUTH_TIBET_ENGLISH_NAME,
+    SOUTH_TIBET_HANS_NAME,
+    SOUTH_TIBET_HANT_NAME,
+    SOUTH_TIBET_JAPANESE_NAME
+  ]
+]
+const SOUTH_TIBET_REGION_EXCLUDE_FILTER: unknown[] = [
+  'all',
+  ['!=', 'wikidata', SOUTH_TIBET_WIKIDATA_ID],
+  ['!=', 'wikidata_id', SOUTH_TIBET_WIKIDATA_ID],
+  ['!=', 'name:en', SOUTH_TIBET_ENGLISH_NAME],
+  ['!=', 'name:zh-Hans', SOUTH_TIBET_HANS_NAME],
+  ['!=', 'name:zh-Hant', SOUTH_TIBET_HANT_NAME],
+  ['!=', 'name:ja', SOUTH_TIBET_JAPANESE_NAME],
+  [
+    '!in',
+    'name',
+    SOUTH_TIBET_ENGLISH_NAME,
+    SOUTH_TIBET_HANS_NAME,
+    SOUTH_TIBET_HANT_NAME,
+    SOUTH_TIBET_JAPANESE_NAME
+  ]
+]
+const REGION_PLACE_FILTER: unknown[] = [
+  'any',
+  ['==', 'class', 'state'],
+  ['==', 'kind', 'state'],
+  ['==', 'kind', 'region'],
+  ['==', 'pmap:kind', 'state'],
+  ['==', 'pmap:kind', 'region']
+]
 const PLACE_SOURCE_LAYERS = ['place', 'places']
 
 export const TAIWAN_PROVINCE_LAYER_ID = 'fumo-political-taiwan-province-label'
+export const SOUTH_TIBET_REGION_LAYER_ID = 'fumo-political-south-tibet-region-label'
 
 type RawStyleLayer = {
   id: string
@@ -213,6 +261,7 @@ const usesPlaceSourceLayer = (layer: RawStyleLayer) => {
 const findCountryLabelLayers = (layers: RawStyleLayer[]) => {
   return layers.filter((layer) => {
     return layer.id !== TAIWAN_PROVINCE_LAYER_ID
+      && layer.id !== SOUTH_TIBET_REGION_LAYER_ID
       && layer.type === 'symbol'
       && usesPlaceSourceLayer(layer)
       && (
@@ -224,7 +273,22 @@ const findCountryLabelLayers = (layers: RawStyleLayer[]) => {
 
 const findStateLabelLayer = (layers: RawStyleLayer[]) => {
   return layers.find((layer) => {
-    return layer.type === 'symbol'
+    return layer.id !== TAIWAN_PROVINCE_LAYER_ID
+      && layer.id !== SOUTH_TIBET_REGION_LAYER_ID
+      && layer.type === 'symbol'
+      && usesPlaceSourceLayer(layer)
+      && (
+        includesPlacePropertyValue(layer.filter, ['class'], ['state'])
+        || includesPlacePropertyValue(layer.filter, ['kind', 'pmap:kind'], ['state', 'region'])
+      )
+  })
+}
+
+const findRegionLabelLayers = (layers: RawStyleLayer[]) => {
+  return layers.filter((layer) => {
+    return layer.id !== TAIWAN_PROVINCE_LAYER_ID
+      && layer.id !== SOUTH_TIBET_REGION_LAYER_ID
+      && layer.type === 'symbol'
       && usesPlaceSourceLayer(layer)
       && (
         includesPlacePropertyValue(layer.filter, ['class'], ['state'])
@@ -243,6 +307,34 @@ const withTaiwanExcluded = (filter: unknown) => {
   }
 
   return ['all', filter, TAIWAN_EXCLUDE_FILTER]
+}
+
+const isSameExpression = (left: unknown, right: unknown): boolean => {
+  if (!isArray(left) || !isArray(right) || left.length !== right.length) {
+    return left === right
+  }
+
+  return left.every((item, index) => isSameExpression(item, right[index]))
+}
+
+const containsExpression = (expression: unknown, target: unknown): boolean => {
+  if (isSameExpression(expression, target)) {
+    return true
+  }
+
+  return isArray(expression) && expression.some((item) => containsExpression(item, target))
+}
+
+const withSouthTibetExcluded = (filter: unknown) => {
+  if (containsExpression(filter, SOUTH_TIBET_REGION_EXCLUDE_FILTER)) {
+    return filter
+  }
+
+  if (!filter) {
+    return ['all', SOUTH_TIBET_REGION_EXCLUDE_FILTER]
+  }
+
+  return ['all', filter, SOUTH_TIBET_REGION_EXCLUDE_FILTER]
 }
 
 const applyCountryLayerFilters = (map: MapLibreMap, countryLayers: RawStyleLayer[]) => {
@@ -303,9 +395,72 @@ const createTaiwanProvinceLayer = (
   }
 }
 
+const createSouthTibetRegionLayer = (
+  stateLayer: RawStyleLayer,
+  label: string
+) => {
+  const source = stateLayer.source
+  const sourceLayer = stateLayer['source-layer']
+
+  if (!source || !sourceLayer) {
+    return null
+  }
+
+  const baseLayout = (stateLayer.layout || {}) as Record<string, unknown>
+  const basePaint = (stateLayer.paint || {}) as Record<string, unknown>
+
+  return {
+    id: SOUTH_TIBET_REGION_LAYER_ID,
+    type: 'symbol',
+    source,
+    'source-layer': sourceLayer,
+    minzoom: stateLayer.minzoom ?? 4,
+    maxzoom: stateLayer.maxzoom ?? 8,
+    filter: [
+      'all',
+      cloneExpression(REGION_PLACE_FILTER),
+      cloneExpression(SOUTH_TIBET_REGION_MATCH_FILTER)
+    ],
+    layout: {
+      ...baseLayout,
+      'text-field': label,
+      'text-transform': 'none'
+    },
+    paint: {
+      ...basePaint
+    }
+  }
+}
+
 const applyCountryLayerFiltersToStyle = (countryLayers: RawStyleLayer[]) => {
   for (const layer of countryLayers) {
     layer.filter = withTaiwanExcluded(layer.filter)
+  }
+}
+
+const applyRegionLayerFilters = (map: MapLibreMap, regionLayers: RawStyleLayer[]) => {
+  for (const layer of regionLayers) {
+    const currentFilter = map.getFilter(layer.id) ?? layer.filter
+    const nextFilter = withSouthTibetExcluded(currentFilter)
+
+    if (nextFilter === currentFilter) {
+      continue
+    }
+
+    try {
+      map.setFilter(layer.id, nextFilter as any)
+    } catch {
+      warnOnce(
+        `set-south-tibet-filter-${layer.id}`,
+        `[map political labels] Failed to update region filter for layer: ${layer.id}`
+      )
+    }
+  }
+}
+
+const applyRegionLayerFiltersToStyle = (regionLayers: RawStyleLayer[]) => {
+  for (const layer of regionLayers) {
+    layer.filter = withSouthTibetExcluded(layer.filter)
   }
 }
 
@@ -315,6 +470,30 @@ const insertTaiwanProvinceLayerIntoStyle = (
   beforeLayerId: string | undefined
 ) => {
   const existingIndex = styleLayers.findIndex((layer) => layer.id === TAIWAN_PROVINCE_LAYER_ID)
+
+  if (existingIndex >= 0) {
+    styleLayers[existingIndex] = targetLayer
+    return
+  }
+
+  const beforeIndex = beforeLayerId
+    ? styleLayers.findIndex((layer) => layer.id === beforeLayerId)
+    : -1
+
+  if (beforeIndex >= 0) {
+    styleLayers.splice(beforeIndex, 0, targetLayer)
+    return
+  }
+
+  styleLayers.push(targetLayer)
+}
+
+const insertSouthTibetRegionLayerIntoStyle = (
+  styleLayers: RawStyleLayer[],
+  targetLayer: RawStyleLayer,
+  beforeLayerId: string | undefined
+) => {
+  const existingIndex = styleLayers.findIndex((layer) => layer.id === SOUTH_TIBET_REGION_LAYER_ID)
 
   if (existingIndex >= 0) {
     styleLayers[existingIndex] = targetLayer
@@ -362,6 +541,34 @@ export const applyTaiwanProvinceLabelPolicyToStyle = (
   return style
 }
 
+export const applySouthTibetRegionLabelPolicyToStyle = (
+  style: StyleSpecification,
+  label: string
+) => {
+  const styleLayers = (style.layers || []) as RawStyleLayer[]
+  if (!styleLayers.length) {
+    return style
+  }
+
+  const regionLayers = findRegionLabelLayers(styleLayers)
+  if (!regionLayers.length) {
+    warnOnce('style-region-layers-missing', '[map political labels] Region label layers not found in fetched style')
+    return style
+  }
+
+  const targetLayer = createSouthTibetRegionLayer(regionLayers[0], label)
+
+  applyRegionLayerFiltersToStyle(regionLayers)
+
+  if (!targetLayer) {
+    warnOnce('style-south-tibet-layer-source-missing', '[map political labels] Cannot create South Tibet layer due to missing source metadata')
+    return style
+  }
+
+  insertSouthTibetRegionLayerIntoStyle(styleLayers, targetLayer, regionLayers[0]?.id)
+  return style
+}
+
 export const updateTaiwanProvinceLabel = (map: MapLibreMap, label: string) => {
   if (!map.getLayer(TAIWAN_PROVINCE_LAYER_ID)) {
     return
@@ -372,6 +579,19 @@ export const updateTaiwanProvinceLabel = (map: MapLibreMap, label: string) => {
     map.setLayoutProperty(TAIWAN_PROVINCE_LAYER_ID, 'text-transform', 'none')
   } catch {
     warnOnce('set-layout-taiwan-label', '[map political labels] Failed to update Taiwan province label text')
+  }
+}
+
+export const updateSouthTibetRegionLabel = (map: MapLibreMap, label: string) => {
+  if (!map.getLayer(SOUTH_TIBET_REGION_LAYER_ID)) {
+    return
+  }
+
+  try {
+    map.setLayoutProperty(SOUTH_TIBET_REGION_LAYER_ID, 'text-field', label)
+    map.setLayoutProperty(SOUTH_TIBET_REGION_LAYER_ID, 'text-transform', 'none')
+  } catch {
+    warnOnce('set-layout-south-tibet-label', '[map political labels] Failed to update South Tibet region label text')
   }
 }
 
@@ -419,4 +639,49 @@ export const applyTaiwanProvinceLabelPolicy = (map: MapLibreMap, label: string) 
   }
 
   updateTaiwanProvinceLabel(map, label)
+}
+
+export const applySouthTibetRegionLabelPolicy = (map: MapLibreMap, label: string) => {
+  const styleLayers = getStyleLayers(map)
+  if (!styleLayers.length) {
+    return
+  }
+
+  const regionLayers = findRegionLabelLayers(styleLayers)
+  if (!regionLayers.length) {
+    if (map.getLayer(SOUTH_TIBET_REGION_LAYER_ID)) {
+      updateSouthTibetRegionLabel(map, label)
+    }
+    warnOnce('region-layers-missing', '[map political labels] Region label layers not found in current style')
+    return
+  }
+
+  applyRegionLayerFilters(map, regionLayers)
+
+  if (map.getLayer(SOUTH_TIBET_REGION_LAYER_ID)) {
+    updateSouthTibetRegionLabel(map, label)
+    return
+  }
+
+  const targetLayer = createSouthTibetRegionLayer(regionLayers[0], label)
+
+  if (!targetLayer) {
+    warnOnce('south-tibet-layer-source-missing', '[map political labels] Cannot create South Tibet layer due to missing source metadata')
+    return
+  }
+
+  const beforeId = regionLayers[0]?.id
+
+  try {
+    if (beforeId && map.getLayer(beforeId)) {
+      map.addLayer(targetLayer as any, beforeId)
+    } else {
+      map.addLayer(targetLayer as any)
+    }
+  } catch {
+    warnOnce('add-layer-south-tibet', '[map political labels] Failed to inject South Tibet region layer')
+    return
+  }
+
+  updateSouthTibetRegionLabel(map, label)
 }

@@ -6,7 +6,10 @@ import {
   MAP_DEFAULT_ZOOM
 } from '~~/shared/fumo'
 import { resolveHostedMapStyleUrl } from '~~/shared/mapStyle'
-import { applyTaiwanProvinceLabelPolicy } from '~~/app/composables/useMapPoliticalLabels'
+import {
+  applySouthTibetRegionLabelPolicy,
+  applyTaiwanProvinceLabelPolicy
+} from '~~/app/composables/useMapPoliticalLabels'
 import {
   BASE_MAP_HEALTH_CHECK_DELAY_MS,
   BASE_MAP_HEALTH_CONFIRM_DELAY_MS,
@@ -39,6 +42,7 @@ useMapResourceHints()
 const { targetRef: stageEl, isActivated } = useDeferredVisibility()
 const mapEl = ref<HTMLDivElement | null>(null)
 const mapRef = shallowRef<import('maplibre-gl').Map | null>(null)
+const southTibetRegionLabel = computed(() => t('map.southTibetRegionLabel'))
 const taiwanProvinceLabel = computed(() => t('map.taiwanProvinceLabel'))
 const mapLoadFailed = ref(false)
 
@@ -184,6 +188,7 @@ const applyPoliticalLabels = () => {
   }
 
   applyTaiwanProvinceLabelPolicy(mapRef.value, taiwanProvinceLabel.value)
+  applySouthTibetRegionLabelPolicy(mapRef.value, southTibetRegionLabel.value)
 }
 
 const clearBaseMapHealthCheckTimer = () => {
@@ -295,6 +300,7 @@ const reloadBaseMapStyle = async () => {
     }
 
     const style = await fetchHostedMapStyle(getMapStyleUrl(), {
+      southTibetRegionLabel: southTibetRegionLabel.value,
       taiwanProvinceLabel: taiwanProvinceLabel.value
     })
 
@@ -379,6 +385,7 @@ watch([isDark, locale], async ([dark]) => {
 
   try {
     const style = await fetchHostedMapStyle(getMapStyleUrl(dark), {
+      southTibetRegionLabel: southTibetRegionLabel.value,
       taiwanProvinceLabel: taiwanProvinceLabel.value
     })
 
@@ -415,6 +422,7 @@ const initializeMap = async (options: { recoveryAttempt?: boolean } = {}) => {
     }
 
     const style = await fetchHostedMapStyle(getMapStyleUrl(), {
+      southTibetRegionLabel: southTibetRegionLabel.value,
       taiwanProvinceLabel: taiwanProvinceLabel.value
     })
 

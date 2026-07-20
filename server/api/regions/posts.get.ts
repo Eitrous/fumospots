@@ -2,6 +2,7 @@ import { getQuery } from 'h3'
 import type { PublicRegionPage, RegionScope, RegionSort } from '~~/shared/fumo'
 import {
   getPreferredGeocodeAcceptLanguage,
+  isSouthTibetLocationScope,
   isTaiwanLocationScope,
   normalizeLocationScopeForLocale
 } from '~~/server/utils/geocode'
@@ -23,6 +24,18 @@ type RegionPostRow = {
 
 const REGION_SORT_VALUES = new Set<RegionSort>(['created', 'captured'])
 const CHINA_COUNTRY_ALIASES = ['China', '\u4e2d\u56fd']
+const SOUTH_TIBET_COUNTRY_ALIASES = ['China', '\u4e2d\u56fd', 'India', '\u5370\u5ea6', '\u30a4\u30f3\u30c9']
+const SOUTH_TIBET_REGION_ALIASES = [
+  'South Tibet',
+  'Arunachal Pradesh',
+  '\u85cf\u5357',
+  '\u85cf\u5357\u5730\u533a',
+  '\u85cf\u5357\u5730\u5340',
+  '\u963f\u9c81\u7eb3\u6070\u5c14\u90a6',
+  '\u963f\u9b6f\u7d0d\u6070\u723e\u90a6',
+  '\u963f\u9c81\u7eb3\u67e5\u5c14\u90a6',
+  '\u30a2\u30eb\u30ca\u30fc\u30c1\u30e3\u30eb\u30fb\u30d7\u30e9\u30c7\u30fc\u30b7\u30e5\u5dde'
+]
 const TAIWAN_COUNTRY_ALIASES = ['Taiwan', '\u53f0\u6e7e', '\u53f0\u7063', '\u81fa\u7063']
 const TAIWAN_PROVINCE_ALIASES = ['Taiwan Province', '\u53f0\u6e7e\u7701', '\u53f0\u7063\u7701', '\u81fa\u7063\u7701']
 const REGION_POST_SELECT = `
@@ -142,6 +155,33 @@ const fetchTaiwanPosts = async (
   return sortRegionPosts(dedupeRegionPosts(rows), sort)
 }
 
+const fetchSouthTibetPosts = async (
+  supabase: ReturnType<typeof createPublicServerClient>,
+  scope: RegionScope,
+  sort: RegionSort
+) => {
+  let request = supabase
+    .from('public_approved_posts')
+    .select(REGION_POST_SELECT)
+    .in('country_name', SOUTH_TIBET_COUNTRY_ALIASES)
+    .in('region_name', SOUTH_TIBET_REGION_ALIASES)
+
+  if (scope.cityName) {
+    request = request.eq('city_name', scope.cityName)
+  }
+
+  const { data, error } = await request
+
+  if (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: error.message
+    })
+  }
+
+  return sortRegionPosts(dedupeRegionPosts((data || []) as RegionPostRow[]), sort)
+}
+
 export default defineEventHandler(async (event): Promise<PublicRegionPage> => {
   const query = getQuery(event)
   const regionName = getTrimmedQueryValue(query.region)
@@ -172,6 +212,9 @@ export default defineEventHandler(async (event): Promise<PublicRegionPage> => {
 
   if (isTaiwanLocationScope(scope)) {
     posts = await fetchTaiwanPosts(supabase, scope, sort)
+    postCount = posts.length
+  } else if (isSouthTibetLocationScope(scope)) {
+    posts = await fetchSouthTibetPosts(supabase, scope, sort)
     postCount = posts.length
   } else {
     const countRequest = applyRegionFilters(

@@ -14,7 +14,10 @@ import type {
 } from "~~/shared/fumo";
 import { MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM } from "~~/shared/fumo";
 import { resolveHostedMapStyleUrl } from "~~/shared/mapStyle";
-import { applyTaiwanProvinceLabelPolicy } from "~~/app/composables/useMapPoliticalLabels";
+import {
+  applySouthTibetRegionLabelPolicy,
+  applyTaiwanProvinceLabelPolicy,
+} from "~~/app/composables/useMapPoliticalLabels";
 import {
   BASE_MAP_HEALTH_CHECK_DELAY_MS,
   BASE_MAP_HEALTH_CONFIRM_DELAY_MS,
@@ -149,6 +152,7 @@ const baseMapTileLoadingRequests = ref(0);
 const isMapLoading = computed(
   () => mapLoadingRequests.value > 0 || baseMapTileLoadingRequests.value > 0,
 );
+const southTibetRegionLabel = computed(() => t("map.southTibetRegionLabel"));
 const taiwanProvinceLabel = computed(() => t("map.taiwanProvinceLabel"));
 const viewportWidth = ref(
   import.meta.client ? window.innerWidth : MOBILE_BREAKPOINT + 1,
@@ -771,6 +775,7 @@ const fetchGeoJson = async (
 const fetchInitialMapStyle = async () => {
   const styleUrl = getMapStyleUrl();
   const options = {
+    southTibetRegionLabel: southTibetRegionLabel.value,
     taiwanProvinceLabel: taiwanProvinceLabel.value,
   };
 
@@ -2004,6 +2009,7 @@ const reloadBaseMapStyle = async () => {
     await resetBaseMapTileProtocol();
 
     const style = await fetchHostedMapStyle(getMapStyleUrl(), {
+      southTibetRegionLabel: southTibetRegionLabel.value,
       taiwanProvinceLabel: taiwanProvinceLabel.value,
     });
 
@@ -2140,6 +2146,7 @@ const applyPoliticalLabels = () => {
   }
 
   applyTaiwanProvinceLabelPolicy(mapRef.value, taiwanProvinceLabel.value);
+  applySouthTibetRegionLabelPolicy(mapRef.value, southTibetRegionLabel.value);
 };
 
 const syncMapRuntimeState = () => {
@@ -2266,6 +2273,7 @@ watch([isDark, locale], async ([dark]) => {
   startMapLoading();
   try {
     const style = await fetchHostedMapStyle(getMapStyleUrl(dark), {
+      southTibetRegionLabel: southTibetRegionLabel.value,
       taiwanProvinceLabel: taiwanProvinceLabel.value,
     });
 

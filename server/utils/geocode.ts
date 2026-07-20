@@ -49,8 +49,22 @@ export type GeocodeLocale = 'zh-CN' | 'en' | 'ja'
 
 export const DEFAULT_ACCEPT_LANGUAGE = 'zh-CN,en'
 const CHINA_COUNTRY_CODE = 'cn'
+const INDIA_COUNTRY_CODE = 'in'
+const SOUTH_TIBET_ISO_3166_2_CODE = 'IN-AR'
 const TAIWAN_COUNTRY_CODE = 'tw'
 const CHINA_COUNTRY_ALIASES = new Set(['china', '\u4e2d\u56fd'])
+const INDIA_COUNTRY_ALIASES = new Set(['india', '\u5370\u5ea6', '\u30a4\u30f3\u30c9'])
+const SOUTH_TIBET_REGION_ALIASES = new Set([
+  'south tibet',
+  'arunachal pradesh',
+  '\u85cf\u5357',
+  '\u85cf\u5357\u5730\u533a',
+  '\u85cf\u5357\u5730\u5340',
+  '\u963f\u9c81\u7eb3\u6070\u5c14\u90a6',
+  '\u963f\u9b6f\u7d0d\u6070\u723e\u90a6',
+  '\u963f\u9c81\u7eb3\u67e5\u5c14\u90a6',
+  '\u30a2\u30eb\u30ca\u30fc\u30c1\u30e3\u30eb\u30fb\u30d7\u30e9\u30c7\u30fc\u30b7\u30e5\u5dde'
+])
 const TAIWAN_COUNTRY_ALIASES = new Set([
   'taiwan',
   '\u53f0\u6e7e',
@@ -156,6 +170,24 @@ const TAIWAN_POLITICAL_LABELS: Record<GeocodeLocale, {
   }
 }
 
+const SOUTH_TIBET_POLITICAL_LABELS: Record<GeocodeLocale, {
+  countryName: string
+  regionName: string
+}> = {
+  'zh-CN': {
+    countryName: '\u4e2d\u56fd',
+    regionName: '\u85cf\u5357\u5730\u533a'
+  },
+  en: {
+    countryName: 'China',
+    regionName: 'South Tibet'
+  },
+  ja: {
+    countryName: '\u4e2d\u56fd',
+    regionName: '\u85cf\u5357\u5730\u533a'
+  }
+}
+
 const pickPlaceName = (entry: NominatimEntry) => {
   const address = entry.address || {}
   return (
@@ -201,6 +233,10 @@ export const normalizeGeocodeLocale = (
 
 export const getTaiwanPoliticalLabels = (acceptLanguage = DEFAULT_ACCEPT_LANGUAGE) => {
   return TAIWAN_POLITICAL_LABELS[normalizeGeocodeLocale(acceptLanguage)]
+}
+
+export const getSouthTibetPoliticalLabels = (acceptLanguage = DEFAULT_ACCEPT_LANGUAGE) => {
+  return SOUTH_TIBET_POLITICAL_LABELS[normalizeGeocodeLocale(acceptLanguage)]
 }
 
 const getTaiwanCityName = (address: NominatimAddress) => {
@@ -274,6 +310,46 @@ const isTaiwanAddress = (address: NominatimAddress) => {
   return address.country_code?.trim().toLowerCase() === TAIWAN_COUNTRY_CODE
 }
 
+const isSouthTibetAddress = (address: NominatimAddress) => {
+  const countryCode = address.country_code?.trim().toLowerCase()
+  const subdivisionCode = address['ISO3166-2-lvl4']?.trim().toUpperCase()
+  const regionValues = [address.state, address.province, address.region]
+
+  return subdivisionCode === SOUTH_TIBET_ISO_3166_2_CODE
+    || (
+      countryCode === INDIA_COUNTRY_CODE
+      && regionValues.some((value) => SOUTH_TIBET_REGION_ALIASES.has(normalizeLocationValue(value)))
+    )
+}
+
+const normalizeSouthTibetDisplayName = (
+  displayName: string,
+  labels: { countryName: string, regionName: string }
+) => {
+  const normalizedParts: string[] = []
+  const seenParts = new Set<string>()
+
+  for (const rawPart of displayName.split(',')) {
+    const part = rawPart.trim()
+    const normalizedPart = normalizeLocationValue(part)
+    const nextPart = SOUTH_TIBET_REGION_ALIASES.has(normalizedPart)
+      ? labels.regionName
+      : INDIA_COUNTRY_ALIASES.has(normalizedPart)
+        ? labels.countryName
+        : part
+    const dedupeKey = normalizeLocationValue(nextPart)
+
+    if (!nextPart || seenParts.has(dedupeKey)) {
+      continue
+    }
+
+    seenParts.add(dedupeKey)
+    normalizedParts.push(nextPart)
+  }
+
+  return normalizedParts.join(', ')
+}
+
 export const isChinaCountryValue = (value: string | null | undefined) => {
   return CHINA_COUNTRY_ALIASES.has(normalizeLocationValue(value))
 }
@@ -286,8 +362,16 @@ export const isTaiwanProvinceValue = (value: string | null | undefined) => {
   return TAIWAN_PROVINCE_ALIASES.has(normalizeLocationValue(value))
 }
 
+export const isSouthTibetRegionValue = (value: string | null | undefined) => {
+  return SOUTH_TIBET_REGION_ALIASES.has(normalizeLocationValue(value))
+}
+
 export const isTaiwanLocationScope = (scope: LocationScopeFields) => {
   return isTaiwanCountryValue(scope.countryName) || isTaiwanProvinceValue(scope.regionName)
+}
+
+export const isSouthTibetLocationScope = (scope: LocationScopeFields) => {
+  return isSouthTibetRegionValue(scope.regionName)
 }
 
 export const normalizeLocationScopeForLocale = <T extends LocationScopeFields>(
@@ -309,6 +393,17 @@ export const normalizeLocationScopeForLocale = <T extends LocationScopeFields>(
       countryName: labels.countryName,
       regionName: labels.regionName,
       cityName: normalizedCityName
+    }
+  }
+
+  if (isSouthTibetRegionValue(regionName)) {
+    const labels = getSouthTibetPoliticalLabels(acceptLanguage)
+
+    return {
+      ...scope,
+      countryName: labels.countryName,
+      regionName: labels.regionName,
+      cityName: isSouthTibetRegionValue(cityName) ? null : cityName
     }
   }
 
@@ -340,6 +435,20 @@ export const normalizeGeocodeResult = (
       countryName: labels.countryName,
       regionName: labels.regionName,
       cityName: getTaiwanCityName(address)
+    }
+  }
+
+  if (isSouthTibetAddress(address)) {
+    const labels = getSouthTibetPoliticalLabels(acceptLanguage)
+    const rawPlaceName = baseResult.placeName
+
+    return {
+      ...baseResult,
+      displayName: normalizeSouthTibetDisplayName(baseResult.displayName, labels),
+      placeName: isSouthTibetRegionValue(rawPlaceName) ? labels.regionName : rawPlaceName,
+      countryName: labels.countryName,
+      regionName: labels.regionName,
+      cityName: getCityName(address, getRegionName(address, acceptLanguage))
     }
   }
 

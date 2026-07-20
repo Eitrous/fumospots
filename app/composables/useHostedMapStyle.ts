@@ -1,10 +1,14 @@
 import type { SpriteSpecification, StyleSpecification } from 'maplibre-gl'
-import { applyTaiwanProvinceLabelPolicyToStyle } from '~~/app/composables/useMapPoliticalLabels'
+import {
+  applySouthTibetRegionLabelPolicyToStyle,
+  applyTaiwanProvinceLabelPolicyToStyle
+} from '~~/app/composables/useMapPoliticalLabels'
 
 const MAP_ASSET_PATH_PREFIX = '/map-assets/'
 
 type FetchHostedMapStyleOptions = {
   signal?: AbortSignal
+  southTibetRegionLabel?: string | null
   taiwanProvinceLabel?: string | null
 }
 
@@ -73,7 +77,11 @@ export const fetchHostedMapStyle = async (
   const resolvedStyle = resolveHostedMapStyleAssetUrls(style)
 
   if (typeof options.taiwanProvinceLabel === 'string') {
-    return applyTaiwanProvinceLabelPolicyToStyle(resolvedStyle, options.taiwanProvinceLabel)
+    applyTaiwanProvinceLabelPolicyToStyle(resolvedStyle, options.taiwanProvinceLabel)
+  }
+
+  if (typeof options.southTibetRegionLabel === 'string') {
+    applySouthTibetRegionLabelPolicyToStyle(resolvedStyle, options.southTibetRegionLabel)
   }
 
   return resolvedStyle
