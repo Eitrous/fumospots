@@ -2642,7 +2642,9 @@ onBeforeUnmount(() => {
   z-index: 92;
   display: flex;
   align-items: flex-end;
-  background: var(--bg);
+  background: transparent;
+  backdrop-filter: blur(4px);
+  transition: background 220ms var(--motion-smooth);
 }
 
 .map-preview-sheet {

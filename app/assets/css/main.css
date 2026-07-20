@@ -2819,8 +2819,9 @@ html[data-theme="dark"] .workbench-detail-like__button.is-liked {
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(0, 0, 0, 0.3);
+  background: transparent;
   backdrop-filter: blur(4px);
+  transition: background 220ms var(--motion-smooth);
 }
 
 .workbench-like-dialog__panel {
@@ -2866,8 +2867,9 @@ html[data-theme="dark"] .workbench-like-dialog__panel {
 }
 
 .workbench-like-dialog.workbench-notice {
-  background: rgba(0, 0, 0, 0.3);
+  background: transparent;
   backdrop-filter: blur(4px);
+  transition: background 220ms var(--motion-smooth);
   pointer-events: none;
 }
 
