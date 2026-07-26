@@ -16,25 +16,35 @@ const errorMessage = ref('')
 const likeDialogMessage = ref('')
 const post = ref<PublicPostDetail | null>(null)
 const selectedPhotoIndex = ref(0)
-const heroImageReady = ref(false)
-const heroImageFailed = ref(false)
 const liking = ref(false)
 const imageViewerOpen = ref(false)
-const viewerImageReady = ref(false)
-const viewerImageFailed = ref(false)
 const imageViewerCloseButton = ref<HTMLButtonElement | null>(null)
 const likeDialogCloseButton = ref<HTMLButtonElement | null>(null)
 const previouslyFocusedElement = ref<HTMLElement | null>(null)
 const likeDialogPreviouslyFocusedElement = ref<HTMLElement | null>(null)
+type PhotoSwipeTarget = 'hero' | 'viewer'
+type PhotoSwipeIntent = 'pending' | 'horizontal' | 'vertical'
+type PhotoLoadState = 'loading' | 'ready' | 'failed'
+
+const heroPhotoLoadStates = reactive(new Map<string, PhotoLoadState>())
+const viewerPhotoLoadStates = reactive(new Map<string, PhotoLoadState>())
+const photoSwipeOffsets = reactive<Record<PhotoSwipeTarget, number>>({
+  hero: 0,
+  viewer: 0
+})
+const photoSwipeDragging = reactive<Record<PhotoSwipeTarget, boolean>>({
+  hero: false,
+  viewer: false
+})
 let loadSequence = 0
 let photoSwipeState: {
   pointerId: number
-  target: 'hero' | 'viewer'
+  target: PhotoSwipeTarget
   startX: number
   startY: number
   lastX: number
   lastY: number
-  isHorizontalIntent: boolean
+  intent: PhotoSwipeIntent
 } | null = null
 let suppressNextHeroClick = false
 let suppressNextViewerBackdropClick = false
@@ -42,7 +52,9 @@ let heroClickSuppressTimer: ReturnType<typeof setTimeout> | null = null
 let viewerBackdropClickSuppressTimer: ReturnType<typeof setTimeout> | null = null
 
 const PHOTO_SWIPE_MIN_DISTANCE = 42
+const PHOTO_SWIPE_INTENT_DISTANCE = 8
 const PHOTO_SWIPE_DIRECTION_RATIO = 1.35
+const PHOTO_SWIPE_EDGE_RESISTANCE = 0.3
 
 const displayPhotos = computed(() => {
   if (!post.value) {
@@ -69,14 +81,39 @@ const selectedPhotoUrl = computed(() => {
   return selectedPhoto.value?.imageUrl || null
 })
 
-const selectedPhotoPreviewUrl = computed(() => {
-  return selectedPhoto.value?.thumbUrl || selectedPhotoUrl.value
-})
-
 const hasMultiplePhotos = computed(() => displayPhotos.value.length > 1)
 const canGoPrevious = computed(() => selectedPhotoIndex.value > 0)
 const canGoNext = computed(() => selectedPhotoIndex.value < displayPhotos.value.length - 1)
-const canOpenImageViewer = computed(() => Boolean(selectedPhotoUrl.value && heroImageReady.value && !heroImageFailed.value))
+const carouselPhotos = computed(() => {
+  const photos = []
+
+  for (let index = selectedPhotoIndex.value - 1; index <= selectedPhotoIndex.value + 1; index += 1) {
+    const photo = displayPhotos.value[index]
+    const imageUrl = photo?.imageUrl
+    if (!imageUrl) {
+      continue
+    }
+
+    photos.push({
+      index,
+      imageUrl,
+      previewUrl: photo.thumbUrl || imageUrl,
+      position: index - selectedPhotoIndex.value
+    })
+  }
+
+  return photos
+})
+const photoLoadState = (target: PhotoSwipeTarget, imageUrl: string): PhotoLoadState => {
+  const states = target === 'hero' ? heroPhotoLoadStates : viewerPhotoLoadStates
+  return states.get(imageUrl) || 'loading'
+}
+const selectedHeroPhotoLoadState = computed(() => {
+  return selectedPhotoUrl.value ? photoLoadState('hero', selectedPhotoUrl.value) : 'loading'
+})
+const canOpenImageViewer = computed(() => Boolean(
+  selectedPhotoUrl.value && selectedHeroPhotoLoadState.value === 'ready'
+))
 const viewerId = computed(() => auth.viewer.value?.userId ?? null)
 const likeButtonLabel = computed(() => {
   return post.value?.likedByViewer ? t('post.unlike') : t('post.like')
@@ -136,6 +173,9 @@ const loadPost = async () => {
   const currentLoad = ++loadSequence
   loading.value = true
   errorMessage.value = ''
+  heroPhotoLoadStates.clear()
+  viewerPhotoLoadStates.clear()
+  resetPhotoSwipe()
   closeLikeDialog()
 
   if (!auth.ready.value) {
@@ -173,6 +213,7 @@ const selectPhoto = (index: number) => {
     return
   }
 
+  resetPhotoSwipe()
   selectedPhotoIndex.value = index
 }
 
@@ -181,7 +222,7 @@ const goPreviousPhoto = () => {
     return
   }
 
-  selectedPhotoIndex.value -= 1
+  selectPhoto(selectedPhotoIndex.value - 1)
 }
 
 const goNextPhoto = () => {
@@ -189,13 +230,59 @@ const goNextPhoto = () => {
     return
   }
 
-  selectedPhotoIndex.value += 1
+  selectPhoto(selectedPhotoIndex.value + 1)
 }
 
 const photoIndicatorLabel = (index: number) => `${index + 1} / ${displayPhotos.value.length}`
 
 const isPhotoSwipeIgnoredTarget = (target: EventTarget | null) => {
   return target instanceof Element && Boolean(target.closest('button, a, input, textarea, select'))
+}
+
+const resetPhotoSwipe = (target?: PhotoSwipeTarget) => {
+  const targets: PhotoSwipeTarget[] = target ? [target] : ['hero', 'viewer']
+
+  if (!target || photoSwipeState?.target === target) {
+    photoSwipeState = null
+  }
+
+  for (const swipeTarget of targets) {
+    photoSwipeOffsets[swipeTarget] = 0
+    photoSwipeDragging[swipeTarget] = false
+  }
+}
+
+const photoSlideStyle = (target: PhotoSwipeTarget, position: number) => ({
+  transform: `translate3d(calc(${position * 100}% + ${photoSwipeOffsets[target]}px), 0, 0)`
+})
+
+const isPhotoSwipeDragging = (target: PhotoSwipeTarget) => photoSwipeDragging[target]
+
+const photoSwipeIntent = (deltaX: number, deltaY: number): PhotoSwipeIntent => {
+  const horizontalDistance = Math.abs(deltaX)
+  const verticalDistance = Math.abs(deltaY)
+
+  if (Math.max(horizontalDistance, verticalDistance) < PHOTO_SWIPE_INTENT_DISTANCE) {
+    return 'pending'
+  }
+
+  if (horizontalDistance > verticalDistance * PHOTO_SWIPE_DIRECTION_RATIO) {
+    return 'horizontal'
+  }
+
+  if (verticalDistance > horizontalDistance * PHOTO_SWIPE_DIRECTION_RATIO) {
+    return 'vertical'
+  }
+
+  return 'pending'
+}
+
+const resistedPhotoSwipeOffset = (deltaX: number) => {
+  if ((deltaX > 0 && !canGoPrevious.value) || (deltaX < 0 && !canGoNext.value)) {
+    return deltaX * PHOTO_SWIPE_EDGE_RESISTANCE
+  }
+
+  return deltaX
 }
 
 const setHeroClickSuppressed = () => {
@@ -239,11 +326,18 @@ const releasePhotoSwipePointer = (event: PointerEvent) => {
   }
 }
 
-const handlePhotoSwipePointerDown = (event: PointerEvent, target: 'hero' | 'viewer') => {
-  if (!hasMultiplePhotos.value || event.button !== 0 || isPhotoSwipeIgnoredTarget(event.target)) {
+const handlePhotoSwipePointerDown = (event: PointerEvent, target: PhotoSwipeTarget) => {
+  if (
+    !hasMultiplePhotos.value
+    || !event.isPrimary
+    || (event.pointerType !== 'touch' && event.pointerType !== 'pen')
+    || event.button !== 0
+    || isPhotoSwipeIgnoredTarget(event.target)
+  ) {
     return
   }
 
+  resetPhotoSwipe()
   photoSwipeState = {
     pointerId: event.pointerId,
     target,
@@ -251,8 +345,9 @@ const handlePhotoSwipePointerDown = (event: PointerEvent, target: 'hero' | 'view
     startY: event.clientY,
     lastX: event.clientX,
     lastY: event.clientY,
-    isHorizontalIntent: false
+    intent: 'pending'
   }
+  photoSwipeDragging[target] = true
 
   if (event.currentTarget instanceof HTMLElement) {
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -269,11 +364,12 @@ const handlePhotoSwipePointerMove = (event: PointerEvent) => {
 
   const deltaX = photoSwipeState.lastX - photoSwipeState.startX
   const deltaY = photoSwipeState.lastY - photoSwipeState.startY
-  if (!photoSwipeState.isHorizontalIntent && isIntentionalHorizontalSwipe(deltaX, deltaY)) {
-    photoSwipeState.isHorizontalIntent = true
+  if (photoSwipeState.intent === 'pending') {
+    photoSwipeState.intent = photoSwipeIntent(deltaX, deltaY)
   }
 
-  if (photoSwipeState.isHorizontalIntent) {
+  if (photoSwipeState.intent === 'horizontal') {
+    photoSwipeOffsets[photoSwipeState.target] = resistedPhotoSwipeOffset(deltaX)
     event.preventDefault()
   }
 }
@@ -283,29 +379,34 @@ const handlePhotoSwipePointerUp = (event: PointerEvent) => {
     return
   }
 
-  const swipeTarget = photoSwipeState.target
+  const swipeState = photoSwipeState
+  const swipeTarget = swipeState.target
   const deltaX = event.clientX - photoSwipeState.startX
   const deltaY = event.clientY - photoSwipeState.startY
-  const shouldChangePhoto = isIntentionalHorizontalSwipe(deltaX, deltaY)
+  const hadHorizontalIntent = swipeState.intent === 'horizontal'
+  const shouldChangePhoto = hadHorizontalIntent && isIntentionalHorizontalSwipe(deltaX, deltaY)
   photoSwipeState = null
   releasePhotoSwipePointer(event)
 
-  if (!shouldChangePhoto) {
-    return
+  if (hadHorizontalIntent) {
+    if (swipeTarget === 'hero') {
+      setHeroClickSuppressed()
+    } else {
+      setViewerBackdropClickSuppressed()
+    }
   }
 
-  if (swipeTarget === 'hero') {
-    setHeroClickSuppressed()
-  } else {
-    setViewerBackdropClickSuppressed()
-  }
-
-  if (deltaX > 0) {
+  if (shouldChangePhoto && deltaX > 0 && canGoPrevious.value) {
     goPreviousPhoto()
     return
   }
 
-  goNextPhoto()
+  if (shouldChangePhoto && deltaX < 0 && canGoNext.value) {
+    goNextPhoto()
+    return
+  }
+
+  resetPhotoSwipe(swipeTarget)
 }
 
 const handlePhotoSwipePointerCancel = (event: PointerEvent) => {
@@ -313,8 +414,10 @@ const handlePhotoSwipePointerCancel = (event: PointerEvent) => {
     return
   }
 
+  const swipeTarget = photoSwipeState.target
   photoSwipeState = null
   releasePhotoSwipePointer(event)
+  resetPhotoSwipe(swipeTarget)
 }
 
 const handleHeroImageClick = () => {
@@ -344,8 +447,7 @@ const openImageViewer = () => {
     previouslyFocusedElement.value = document.activeElement
   }
 
-  viewerImageReady.value = false
-  viewerImageFailed.value = false
+  resetPhotoSwipe('viewer')
   imageViewerOpen.value = true
   void nextTick(() => {
     imageViewerCloseButton.value?.focus()
@@ -358,8 +460,7 @@ const closeImageViewer = () => {
   }
 
   imageViewerOpen.value = false
-  viewerImageReady.value = false
-  viewerImageFailed.value = false
+  resetPhotoSwipe('viewer')
   void nextTick(() => {
     previouslyFocusedElement.value?.focus()
     previouslyFocusedElement.value = null
@@ -430,34 +531,13 @@ const toggleLike = async () => {
   }
 }
 
-const handleHeroImageLoad = (event: Event) => {
-  const image = event.target as HTMLImageElement
-  if (image.currentSrc && image.currentSrc !== selectedPhotoUrl.value) {
-    return
-  }
-
-  heroImageReady.value = true
-  heroImageFailed.value = false
-}
-
-const handleHeroImageError = () => {
-  heroImageReady.value = false
-  heroImageFailed.value = true
-}
-
-const handleViewerImageLoad = (event: Event) => {
-  const image = event.target as HTMLImageElement
-  if (image.currentSrc && image.currentSrc !== selectedPhotoUrl.value) {
-    return
-  }
-
-  viewerImageReady.value = true
-  viewerImageFailed.value = false
-}
-
-const handleViewerImageError = () => {
-  viewerImageReady.value = false
-  viewerImageFailed.value = true
+const setPhotoLoadState = (
+  target: PhotoSwipeTarget,
+  imageUrl: string,
+  state: PhotoLoadState
+) => {
+  const states = target === 'hero' ? heroPhotoLoadStates : viewerPhotoLoadStates
+  states.set(imageUrl, state)
 }
 
 const handleViewerKeydown = (event: KeyboardEvent) => {
@@ -493,10 +573,7 @@ const handleLikeDialogKeydown = (event: KeyboardEvent) => {
 }
 
 watch(selectedPhotoUrl, () => {
-  heroImageReady.value = false
-  heroImageFailed.value = false
-  viewerImageReady.value = false
-  viewerImageFailed.value = false
+  resetPhotoSwipe()
 
   if (!selectedPhotoUrl.value) {
     closeImageViewer()
@@ -592,55 +669,71 @@ onBeforeUnmount(() => {
       <div
         v-if="selectedPhotoUrl"
         class="workbench-detail-hero"
-        :class="{ 'is-loading': !heroImageReady && !heroImageFailed, 'is-ready': heroImageReady }"
+        :class="{
+          'is-loading': selectedHeroPhotoLoadState === 'loading',
+          'is-ready': selectedHeroPhotoLoadState === 'ready',
+          'is-photo-dragging': isPhotoSwipeDragging('hero')
+        }"
         @pointerdown="handlePhotoSwipePointerDown($event, 'hero')"
         @pointermove="handlePhotoSwipePointerMove"
         @pointerup="handlePhotoSwipePointerUp"
         @pointercancel="handlePhotoSwipePointerCancel"
       >
         <div
-          v-if="selectedPhotoPreviewUrl"
-          class="workbench-detail-hero__backdrop"
-          :style="backgroundImageStyle(selectedPhotoPreviewUrl)"
-          aria-hidden="true"
-        />
-        <div
-          v-if="!heroImageReady"
-          class="workbench-detail-hero__placeholder"
-          aria-live="polite"
+          v-for="item in carouselPhotos"
+          :key="`hero-photo-${item.index}-${item.imageUrl}`"
+          class="workbench-detail-hero__slide"
+          :class="{ 'is-current': item.index === selectedPhotoIndex }"
+          :style="photoSlideStyle('hero', item.position)"
+          :aria-hidden="item.index === selectedPhotoIndex ? undefined : 'true'"
         >
-          <span
-            v-if="!heroImageFailed"
-            class="workbench-progress-ring workbench-progress-ring--hero"
-            aria-hidden="true"
-          ></span>
-          <i
-            v-else
-            class="fa-solid fa-image"
+          <div
+            class="workbench-detail-hero__backdrop"
+            :style="backgroundImageStyle(item.previewUrl)"
             aria-hidden="true"
           />
-          <span class="sr-only">{{ heroImageFailed ? t('post.unavailableTitle') : t('post.loadingTitle') }}</span>
+          <div
+            v-if="photoLoadState('hero', item.imageUrl) !== 'ready'"
+            class="workbench-detail-hero__placeholder"
+            :aria-live="item.index === selectedPhotoIndex ? 'polite' : 'off'"
+          >
+            <span
+              v-if="photoLoadState('hero', item.imageUrl) === 'loading'"
+              class="workbench-progress-ring workbench-progress-ring--hero"
+              aria-hidden="true"
+            ></span>
+            <i
+              v-else
+              class="fa-solid fa-image"
+              aria-hidden="true"
+            />
+            <span class="sr-only">
+              {{ photoLoadState('hero', item.imageUrl) === 'failed' ? t('post.unavailableTitle') : t('post.loadingTitle') }}
+            </span>
+          </div>
+          <img
+            v-show="photoLoadState('hero', item.imageUrl) !== 'failed'"
+            class="workbench-detail-hero__image"
+            :class="{
+              'is-ready': photoLoadState('hero', item.imageUrl) === 'ready',
+              'is-zoomable': item.index === selectedPhotoIndex && canOpenImageViewer
+            }"
+            :src="item.imageUrl"
+            :alt="item.index === selectedPhotoIndex ? post.title : ''"
+            decoding="async"
+            :fetchpriority="item.index === selectedPhotoIndex ? 'high' : 'auto'"
+            :loading="item.index === selectedPhotoIndex ? 'eager' : 'lazy'"
+            draggable="false"
+            :role="item.index === selectedPhotoIndex ? 'button' : undefined"
+            :tabindex="item.index === selectedPhotoIndex && canOpenImageViewer ? 0 : -1"
+            :aria-label="item.index === selectedPhotoIndex ? t('post.openPhotoViewer') : undefined"
+            @click="item.index === selectedPhotoIndex && handleHeroImageClick()"
+            @keydown.enter.prevent="item.index === selectedPhotoIndex && openImageViewer()"
+            @keydown.space.prevent="item.index === selectedPhotoIndex && openImageViewer()"
+            @load="setPhotoLoadState('hero', item.imageUrl, 'ready')"
+            @error="setPhotoLoadState('hero', item.imageUrl, 'failed')"
+          />
         </div>
-        <img
-          v-show="!heroImageFailed"
-          :key="selectedPhotoUrl"
-          class="workbench-detail-hero__image"
-          :class="{ 'is-ready': heroImageReady, 'is-zoomable': canOpenImageViewer }"
-          :src="selectedPhotoUrl"
-          :alt="post.title"
-          decoding="async"
-          fetchpriority="high"
-          loading="eager"
-          draggable="false"
-          role="button"
-          :tabindex="canOpenImageViewer ? 0 : -1"
-          :aria-label="t('post.openPhotoViewer')"
-          @click="handleHeroImageClick"
-          @keydown.enter.prevent="openImageViewer"
-          @keydown.space.prevent="openImageViewer"
-          @load="handleHeroImageLoad"
-          @error="handleHeroImageError"
-        />
         <template v-if="hasMultiplePhotos">
           <div class="workbench-detail-hero__nav-zone workbench-detail-hero__nav-zone--previous">
             <button
@@ -797,6 +890,7 @@ onBeforeUnmount(() => {
     <div
       v-if="imageViewerOpen && selectedPhotoUrl && post"
       class="workbench-photo-viewer"
+      :class="{ 'is-photo-dragging': isPhotoSwipeDragging('viewer') }"
       role="dialog"
       aria-modal="true"
       :aria-label="post.title"
@@ -829,35 +923,46 @@ onBeforeUnmount(() => {
 
       <div class="workbench-photo-viewer__stage">
         <div
-          v-if="!viewerImageReady"
-          class="workbench-photo-viewer__placeholder"
-          aria-live="polite"
+          v-for="item in carouselPhotos"
+          :key="`viewer-photo-${item.index}-${item.imageUrl}`"
+          class="workbench-photo-viewer__slide"
+          :class="{ 'is-current': item.index === selectedPhotoIndex }"
+          :style="photoSlideStyle('viewer', item.position)"
+          :aria-hidden="item.index === selectedPhotoIndex ? undefined : 'true'"
         >
-          <span
-            v-if="!viewerImageFailed"
-            class="workbench-progress-ring workbench-progress-ring--viewer"
-            aria-hidden="true"
-          ></span>
-          <i
-            v-else
-            class="fa-solid fa-image"
-            aria-hidden="true"
-          />
-          <span class="sr-only">{{ viewerImageFailed ? t('post.unavailableTitle') : t('post.loadingTitle') }}</span>
+          <div
+            v-if="photoLoadState('viewer', item.imageUrl) !== 'ready'"
+            class="workbench-photo-viewer__placeholder"
+            :aria-live="item.index === selectedPhotoIndex ? 'polite' : 'off'"
+          >
+            <span
+              v-if="photoLoadState('viewer', item.imageUrl) === 'loading'"
+              class="workbench-progress-ring workbench-progress-ring--viewer"
+              aria-hidden="true"
+            ></span>
+            <i
+              v-else
+              class="fa-solid fa-image"
+              aria-hidden="true"
+            />
+            <span class="sr-only">
+              {{ photoLoadState('viewer', item.imageUrl) === 'failed' ? t('post.unavailableTitle') : t('post.loadingTitle') }}
+            </span>
+          </div>
+          <img
+            v-show="photoLoadState('viewer', item.imageUrl) !== 'failed'"
+            class="workbench-photo-viewer__image"
+            :class="{ 'is-ready': photoLoadState('viewer', item.imageUrl) === 'ready' }"
+            :src="item.imageUrl"
+            :alt="item.index === selectedPhotoIndex ? post.title : ''"
+            decoding="async"
+            :fetchpriority="item.index === selectedPhotoIndex ? 'high' : 'auto'"
+            :loading="item.index === selectedPhotoIndex ? 'eager' : 'lazy'"
+            draggable="false"
+            @load="setPhotoLoadState('viewer', item.imageUrl, 'ready')"
+            @error="setPhotoLoadState('viewer', item.imageUrl, 'failed')"
+          >
         </div>
-        <img
-          v-show="!viewerImageFailed"
-          :key="`viewer-${selectedPhotoUrl}`"
-          class="workbench-photo-viewer__image"
-          :class="{ 'is-ready': viewerImageReady }"
-          :src="selectedPhotoUrl"
-          :alt="post.title"
-          decoding="async"
-          loading="eager"
-          draggable="false"
-          @load="handleViewerImageLoad"
-          @error="handleViewerImageError"
-        >
       </div>
 
       <button

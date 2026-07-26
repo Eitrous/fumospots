@@ -3138,6 +3138,19 @@ html[data-theme="dark"] .workbench-progress-ring::after {
   place-items: center;
 }
 
+.workbench-detail-hero__slide {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  transition: transform 220ms var(--motion-smooth);
+  will-change: transform;
+}
+
+.workbench-detail-hero.is-photo-dragging .workbench-detail-hero__slide {
+  transition: none;
+}
+
 .workbench-detail-hero::after {
   content: '';
   position: absolute;
@@ -3361,11 +3374,28 @@ html[data-theme="dark"] .workbench-detail-hero__indicator.is-active {
   inset: clamp(0.75rem, 2.6vw, 2rem);
   z-index: 1;
   display: grid;
+  overflow: hidden;
   place-items: center;
   pointer-events: none;
 }
 
+.workbench-photo-viewer__slide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition: transform 220ms var(--motion-smooth);
+  will-change: transform;
+  pointer-events: none;
+}
+
+.workbench-photo-viewer.is-photo-dragging .workbench-photo-viewer__slide {
+  transition: none;
+}
+
 .workbench-photo-viewer__placeholder {
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
   color: var(--viewer-ink);
@@ -3392,6 +3422,10 @@ html[data-theme="dark"] .workbench-detail-hero__indicator.is-active {
 
 .workbench-photo-viewer__image.is-ready {
   opacity: 1;
+}
+
+.workbench-photo-viewer__slide:not(.is-current) .workbench-photo-viewer__image {
+  pointer-events: none;
 }
 
 .workbench-photo-viewer__close,
@@ -3448,6 +3482,13 @@ html[data-theme="dark"] .workbench-detail-hero__indicator.is-active {
   .workbench-photo-viewer__close,
   .workbench-photo-viewer__nav {
     background: var(--viewer-bg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbench-detail-hero__slide,
+  .workbench-photo-viewer__slide {
+    transition: none;
   }
 }
 
