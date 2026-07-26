@@ -47,6 +47,7 @@ const PHOTO_UPLOAD_EXTENSION_BY_TYPE = new Map([
   ['image/png', 'png'],
   ['image/webp', 'webp']
 ])
+const DECIMAL_COORDINATE_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/
 
 const props = withDefaults(defineProps<{
   mode?: 'create' | 'edit'
@@ -61,7 +62,6 @@ const emit = defineEmits<{
 
 const auth = useAuthState()
 const { t, locale } = useI18n()
-const { formatLatLng } = useFormatters()
 const { invalidatePostDetail } = usePostDetailCache()
 const { invalidateUserPage } = useUserPageCache()
 
@@ -80,6 +80,10 @@ const lastAutoPlaceName = ref<string | null>(null)
 const privacyMode = ref<PrivacyMode>('exact')
 const exactLocation = ref<LatLng | null>(null)
 const publicLocation = ref<LatLng | null>(null)
+const latitudeInput = ref('')
+const longitudeInput = ref('')
+const coordinateInputError = ref('')
+const coordinateInputsRef = ref<HTMLElement | null>(null)
 const capturedAt = ref('')
 
 const searchQuery = ref('')
@@ -103,6 +107,7 @@ const uploadProgressPercent = computed(() => {
 
   return Math.min(100, Math.round((uploadProgressStepDone.value / uploadProgressStepCount.value) * 100))
 })
+const locationFieldsLoading = computed(() => reverseLookupPending.value || loadingEditable.value)
 
 const submitNextPath = computed(() => {
   return isEditMode.value && props.postId
@@ -371,19 +376,93 @@ const reverseLookupLocation = async (location: LatLng) => {
   }
 }
 
+const syncCoordinateInputs = (location: LatLng | null) => {
+  latitudeInput.value = location == null ? '' : String(location.lat)
+  longitudeInput.value = location == null ? '' : String(location.lng)
+  coordinateInputError.value = ''
+}
+
 const handleExactLocationUpdate = (location: LatLng | null) => {
   exactLocation.value = location
+  publicLocation.value = location
 
   if (!location) {
     return
   }
 
-  publicLocation.value = location
   void reverseLookupLocation(location)
 }
 
 const handlePublicLocationUpdate = (location: LatLng | null) => {
   publicLocation.value = location
+}
+
+const applyCoordinateInputs = () => {
+  const latitudeValue = latitudeInput.value.trim()
+  const longitudeValue = longitudeInput.value.trim()
+
+  if (!latitudeValue && !longitudeValue) {
+    coordinateInputError.value = ''
+    handleExactLocationUpdate(null)
+    return true
+  }
+
+  if (!latitudeValue || !longitudeValue) {
+    coordinateInputError.value = t('submit.errors.coordinatePairRequired')
+    return false
+  }
+
+  const latitude = Number(latitudeValue)
+  const longitude = Number(longitudeValue)
+
+  if (
+    !DECIMAL_COORDINATE_PATTERN.test(latitudeValue)
+    || !Number.isFinite(latitude)
+    || latitude < -90
+    || latitude > 90
+  ) {
+    coordinateInputError.value = t('submit.errors.latitudeInvalid')
+    return false
+  }
+
+  if (
+    !DECIMAL_COORDINATE_PATTERN.test(longitudeValue)
+    || !Number.isFinite(longitude)
+    || longitude < -180
+    || longitude > 180
+  ) {
+    coordinateInputError.value = t('submit.errors.longitudeInvalid')
+    return false
+  }
+
+  coordinateInputError.value = ''
+
+  if (
+    exactLocation.value?.lat === latitude
+    && exactLocation.value?.lng === longitude
+  ) {
+    syncCoordinateInputs(exactLocation.value)
+    return true
+  }
+
+  handleExactLocationUpdate({
+    lat: latitude,
+    lng: longitude
+  })
+  return true
+}
+
+const handleCoordinateFocusOut = (event: FocusEvent) => {
+  const nextTarget = event.relatedTarget
+
+  if (
+    nextTarget instanceof Node
+    && coordinateInputsRef.value?.contains(nextTarget)
+  ) {
+    return
+  }
+
+  applyCoordinateInputs()
 }
 
 const runPlaceSearch = async () => {
@@ -634,12 +713,24 @@ watch(
   }
 )
 
+watch(
+  exactLocation,
+  location => {
+    syncCoordinateInputs(location)
+  },
+  {
+    deep: true,
+    immediate: true
+  }
+)
+
 const canSubmit = computed(() => {
   return Boolean(
     selectedPhotos.value.length
     && title.value.trim()
     && exactLocation.value
     && publicLocation.value
+    && !coordinateInputError.value
     && auth.viewer.value
     && !loadingEditable.value
     && !uploading.value
@@ -799,6 +890,10 @@ const submitPost = async () => {
 
   if (!title.value.trim()) {
     errorMessage.value = t('submit.errors.titleRequired')
+    return
+  }
+
+  if (!applyCoordinateInputs()) {
     return
   }
 
@@ -1203,15 +1298,30 @@ onBeforeUnmount(() => {
           <div class="field-grid field-grid--three">
             <label class="field-label">
               <span>{{ t('submit.countryLabel') }}:</span>
-              <span>{{ countryName }}</span>
+              <span
+                v-if="locationFieldsLoading"
+                class="workbench-skeleton-shape submit-location-field-skeleton"
+                aria-hidden="true"
+              />
+              <span v-else>{{ countryName }}</span>
             </label>
             <label class="field-label">
               <span>{{ t('submit.regionLabel') }}:</span>
-              <span>{{ regionName }}</span>
-            </label> 
+              <span
+                v-if="locationFieldsLoading"
+                class="workbench-skeleton-shape submit-location-field-skeleton"
+                aria-hidden="true"
+              />
+              <span v-else>{{ regionName }}</span>
+            </label>
             <label class="field-label">
               <span>{{ t('submit.cityLabel') }}:</span>
-              <span>{{ cityName }}</span>
+              <span
+                v-if="locationFieldsLoading"
+                class="workbench-skeleton-shape submit-location-field-skeleton"
+                aria-hidden="true"
+              />
+              <span v-else>{{ cityName }}</span>
             </label>
           </div>
         </div>
@@ -1219,12 +1329,58 @@ onBeforeUnmount(() => {
 
 
       <div class="workbench-stack-section__head">
-        <strong>{{ t('submit.locationSectionTitle') }}</strong>
-        <div class="picker-coords">
-          <div class="picker-coords__group">
-            <code>{{ t('submit.exactLocationLabel', { value: formatLatLng(exactLocation) }) }}</code>
-          </div>
+        <strong>{{ t('submit.coordinatesSectionTitle') }}</strong>
+      </div>
+      <div
+        ref="coordinateInputsRef"
+        class="coordinate-inputs"
+        @focusout="handleCoordinateFocusOut"
+      >
+        <div class="field-grid field-grid--two coordinate-inputs__fields">
+          <label class="field-label">
+            <span>{{ t('submit.latitudeLabel') }}</span>
+            <input
+              v-model="latitudeInput"
+              class="field-input"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              spellcheck="false"
+              :placeholder="t('submit.latitudePlaceholder')"
+              :aria-invalid="Boolean(coordinateInputError)"
+              :aria-describedby="coordinateInputError ? 'coordinate-input-error' : undefined"
+              @keydown.enter.prevent="applyCoordinateInputs"
+            >
+          </label>
+
+          <label class="field-label">
+            <span>{{ t('submit.longitudeLabel') }}</span>
+            <input
+              v-model="longitudeInput"
+              class="field-input"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              spellcheck="false"
+              :placeholder="t('submit.longitudePlaceholder')"
+              :aria-invalid="Boolean(coordinateInputError)"
+              :aria-describedby="coordinateInputError ? 'coordinate-input-error' : undefined"
+              @keydown.enter.prevent="applyCoordinateInputs"
+            >
+          </label>
         </div>
+
+        <p
+          v-if="coordinateInputError"
+          id="coordinate-input-error"
+          class="coordinate-inputs__error"
+          role="alert"
+        >
+          {{ coordinateInputError }}
+        </p>
+      </div>
+      <div class="workbench-stack-section__head">
+        <strong>{{ t('submit.locationSectionTitle') }}</strong>
       </div>
       <LocationPickerMap
         class="workbench-submit-map"
@@ -1382,5 +1538,45 @@ onBeforeUnmount(() => {
 
 .field-input--readonly:focus {
   border-color: var(--border);
+}
+
+.coordinate-inputs {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.coordinate-inputs__fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.coordinate-inputs__fields .field-input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.coordinate-inputs__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.submit-location-field-skeleton {
+  width: min(100%, 5.5rem);
+  height: 0.9rem;
+}
+
+.field-grid--three > .field-label:nth-child(2) .submit-location-field-skeleton {
+  width: min(82%, 4.5rem);
+}
+
+.field-grid--three > .field-label:nth-child(3) .submit-location-field-skeleton {
+  width: min(68%, 3.75rem);
+}
+
+@media (max-width: 520px) {
+  .coordinate-inputs__fields {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
