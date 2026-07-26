@@ -2213,6 +2213,7 @@ html[data-theme="dark"] .workbench-icon-button--primary:focus-visible {
   place-items: center;
   margin: 0;
   min-height: 0.95em;
+  width: 100%;
   color: var(--ink);
   font-family: var(--font-display);
   font-size: clamp(2.45rem, 7vw, 3.45rem);
