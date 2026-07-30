@@ -112,7 +112,6 @@ const { getRegionGeometry } = useRegionGeometryCache();
 useMapResourceHints();
 
 const MOBILE_BREAKPOINT = 980;
-const LOW_ZOOM_PMTILES_CACHE_MAX_ZOOM = 8;
 const MAX_PREVIEW_FETCH_ITEMS = 100;
 const BASEMAP_TILE_LOADING_MAX_MS = 5000;
 const BASEMAP_TILE_LOADING_INTERACTION_SETTLE_MS = 1200;
@@ -294,7 +293,6 @@ let baseMapTileLoadingInteractionTimer: number | null = null;
 let baseMapTileLoadingInteractionActive = false;
 let baseMapReady = false;
 let baseMapRecoveryAttempts = 0;
-let lowZoomWarmupAbortController: AbortController | null = null;
 let pendingStyleSourceRefresh = false;
 let previewSheetPointerId: number | null = null;
 let previewSheetPointerStartY = 0;
@@ -681,7 +679,6 @@ const markBaseMapReadyIfVisible = () => {
   baseMapRecoveryAttempts = 0;
   clearBaseMapHealthCheckTimer();
   clearBaseMapRecoveryTimer();
-  scheduleLowZoomMapWarmup();
   return true;
 };
 
@@ -1929,40 +1926,11 @@ const scheduleInitialSourceLoad = () => {
   });
 };
 
-const scheduleLowZoomMapWarmup = () => {
-  if (!import.meta.client || lowZoomWarmupAbortController || !baseMapReady) {
-    return;
-  }
-
-  const pmtilesUrl = String(config.public.pmtilesUrl || "").trim();
-  if (!pmtilesUrl) {
-    return;
-  }
-
-  const abortController = new AbortController();
-  lowZoomWarmupAbortController = abortController;
-
-  void warmLowZoomPmtilesCache(pmtilesUrl, {
-    maxZoom: LOW_ZOOM_PMTILES_CACHE_MAX_ZOOM,
-    signal: abortController.signal,
-  })
-    .catch(() => {
-      // The map still works with normal on-demand PMTiles loading if warmup fails.
-    })
-    .finally(() => {
-      if (lowZoomWarmupAbortController === abortController) {
-        lowZoomWarmupAbortController = null;
-      }
-    });
-};
-
 const resetBaseMapTileProtocol = async () => {
   if (!maplibregl) {
     return;
   }
 
-  lowZoomWarmupAbortController?.abort();
-  lowZoomWarmupAbortController = null;
   await recoverPmtilesProtocol(maplibregl);
 };
 
@@ -2341,7 +2309,6 @@ onMounted(async () => {
   mapRef.value.on("load", () => {
     scheduleMapRuntimeSync();
     scheduleInitialSourceLoad();
-    scheduleLowZoomMapWarmup();
     scheduleBaseMapHealthCheck();
 
     if (props.selectedPostId) {
@@ -2391,8 +2358,6 @@ onBeforeUnmount(() => {
   mapPostsAbortController?.abort();
   mapPostsAbortController = null;
   resetBaseMapTileLoading();
-  lowZoomWarmupAbortController?.abort();
-  lowZoomWarmupAbortController = null;
   teardownPreviewSheetPointerListeners();
   mapResizeObserver?.disconnect();
   mapResizeObserver = null;
