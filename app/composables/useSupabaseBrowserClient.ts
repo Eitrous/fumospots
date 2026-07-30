@@ -1,29 +1,36 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
-let browserClient: SupabaseClient | null = null
+let browserClientPromise: Promise<SupabaseClient> | null = null
 
-export const useSupabaseBrowserClient = () => {
+export const useSupabaseBrowserClient = async () => {
   if (!import.meta.client) {
     throw new Error('Supabase browser client can only run on the client.')
   }
 
-  if (browserClient) {
-    return browserClient
+  if (browserClientPromise) {
+    return browserClientPromise
   }
 
   const config = useRuntimeConfig()
 
-  browserClient = createClient(
-    config.public.supabaseUrl,
-    config.public.supabaseAnonKey,
-    {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      }
-    }
-  )
+  browserClientPromise = import('@supabase/supabase-js')
+    .then(({ createClient }) => {
+      return createClient(
+        config.public.supabaseUrl,
+        config.public.supabaseAnonKey,
+        {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+          }
+        }
+      )
+    })
+    .catch((error) => {
+      browserClientPromise = null
+      throw error
+    })
 
-  return browserClient
+  return browserClientPromise
 }
