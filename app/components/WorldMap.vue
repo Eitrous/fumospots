@@ -753,19 +753,9 @@ const buildRegionHighlightCollection = (
   };
 };
 
-const fetchGeoJson = async (
-  signal?: AbortSignal,
-  options: { force?: boolean } = {},
-) => {
-  const query: Record<string, string> = {};
-
-  if (options.force) {
-    query.refresh = String(Date.now());
-  }
-
+const fetchGeoJson = async (signal?: AbortSignal) => {
   return await $fetch<PublicMapPointCollection>("/api/map/posts", {
     signal,
-    query,
   });
 };
 
@@ -1447,7 +1437,7 @@ const scheduleDisplaySourceSync = () => {
 };
 
 const refreshSource = async (
-  options: { loadingStarted?: boolean; force?: boolean } = {},
+  options: { loadingStarted?: boolean } = {},
 ) => {
   if (!mapRef.value) {
     return;
@@ -1463,9 +1453,7 @@ const refreshSource = async (
   }
 
   try {
-    const geojson = await fetchGeoJson(abortController.signal, {
-      force: options.force,
-    });
+    const geojson = await fetchGeoJson(abortController.signal);
     const nextCollection = geojson || emptyCollection;
 
     if (
@@ -1711,7 +1699,9 @@ const getPreviewItemsForGroup = async (clusterState: DisplayClusterState) => {
     return cached;
   }
 
-  const ids = clusterState.memberIds.slice(0, MAX_PREVIEW_FETCH_ITEMS);
+  const ids = clusterState.memberIds
+    .slice(0, MAX_PREVIEW_FETCH_ITEMS)
+    .sort((left, right) => left - right);
   const response = await $fetch<PublicMapPreviewResponse>("/api/map/previews", {
     query: {
       ids: ids.join(","),
@@ -2132,7 +2122,7 @@ const syncMapRuntimeState = () => {
 
   if (pendingStyleSourceRefresh && initialSourceLoaded) {
     pendingStyleSourceRefresh = false;
-    void refreshSource({ force: true });
+    void refreshSource();
   }
 };
 
@@ -2152,7 +2142,7 @@ const refreshVisibleMapSource = () => {
     return;
   }
 
-  void refreshSource({ force: true });
+  void refreshSource();
 };
 
 const teardownPreviewSheetPointerListeners = () => {
