@@ -1,12 +1,53 @@
-import type { Session, User } from '@supabase/supabase-js'
+import type { Session, SupabaseClient, User } from '@supabase/supabase-js'
 import type { CurrentViewer } from '~~/shared/fumo'
 
 let listenerBound = false
+let authInitializationPromise: Promise<void> | null = null
 type OAuthProvider = 'github' | 'google' | 'azure'
 const AUTH_ACCESS_TOKEN_COOKIE = 'fumo_access_token'
 const AUTH_ACCESS_TOKEN_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
+const AUTH_CALLBACK_QUERY_KEYS = [
+  'code',
+  'error',
+  'error_code',
+  'error_description',
+  'token_hash'
+] as const
+const AUTH_CALLBACK_HASH_KEYS = [
+  'access_token',
+  'refresh_token',
+  'error',
+  'error_code',
+  'error_description'
+] as const
+
+const hasAuthCallbackParameters = () => {
+  const url = new URL(window.location.href)
+  const hashParameters = new URLSearchParams(
+    url.hash.startsWith('#') ? url.hash.slice(1) : url.hash
+  )
+
+  return AUTH_CALLBACK_QUERY_KEYS.some((key) => url.searchParams.has(key))
+    || AUTH_CALLBACK_HASH_KEYS.some((key) => hashParameters.has(key))
+}
+
+const hasStoredSupabaseSession = (supabaseUrl: string) => {
+  try {
+    const projectReference = new URL(supabaseUrl).hostname.split('.')[0]
+    if (!projectReference) {
+      return false
+    }
+
+    return Boolean(
+      window.localStorage.getItem(`sb-${projectReference}-auth-token`)
+    )
+  } catch {
+    return false
+  }
+}
 
 export const useAuthState = () => {
+  const config = useRuntimeConfig()
   const session = useState<Session | null>('auth:session', () => null)
   const user = useState<User | null>('auth:user', () => null)
   const viewer = useState<CurrentViewer | null>('auth:viewer', () => null)
@@ -57,24 +98,75 @@ export const useAuthState = () => {
     }
   }
 
-  const init = async () => {
-    if (import.meta.server || ready.value || initializing.value) {
+  const bindAuthListener = (supabase: SupabaseClient) => {
+    if (listenerBound) {
       return
     }
 
-    initializing.value = true
-    const supabase = useSupabaseBrowserClient()
-    const { data } = await supabase.auth.getSession()
+    listenerBound = true
+    supabase.auth.onAuthStateChange((_event, nextSession) => {
+      void applySession(nextSession ?? null)
+    })
+  }
 
-    if (!listenerBound) {
-      listenerBound = true
-      supabase.auth.onAuthStateChange((_event, nextSession) => {
-        void applySession(nextSession ?? null)
-      })
+  const getSupabaseClient = async () => {
+    const supabase = await useSupabaseBrowserClient()
+    bindAuthListener(supabase)
+    return supabase
+  }
+
+  const init = async () => {
+    if (import.meta.server || ready.value) {
+      return
     }
 
-    await applySession(data.session ?? null)
-    initializing.value = false
+    if (authInitializationPromise) {
+      return authInitializationPromise
+    }
+
+    const initialization = (async () => {
+      initializing.value = true
+
+      try {
+        const shouldLoadSupabase = Boolean(accessTokenCookie.value)
+          || hasAuthCallbackParameters()
+          || hasStoredSupabaseSession(String(config.public.supabaseUrl || ''))
+
+        if (!shouldLoadSupabase) {
+          session.value = null
+          user.value = null
+          viewer.value = null
+          ready.value = true
+          return
+        }
+
+        const supabase = await useSupabaseBrowserClient()
+        const { data, error } = await supabase.auth.getSession()
+        if (error) {
+          throw error
+        }
+
+        bindAuthListener(supabase)
+        await applySession(data.session ?? null)
+      } catch {
+        session.value = null
+        user.value = null
+        viewer.value = null
+        ready.value = true
+      } finally {
+        initializing.value = false
+      }
+    })()
+
+    authInitializationPromise = initialization
+
+    try {
+      await initialization
+    } finally {
+      if (authInitializationPromise === initialization) {
+        authInitializationPromise = null
+      }
+    }
   }
 
   const refreshViewer = async () => {
@@ -94,7 +186,7 @@ export const useAuthState = () => {
   }
 
   const signInWithPassword = async (email: string, password: string) => {
-    const supabase = useSupabaseBrowserClient()
+    const supabase = await getSupabaseClient()
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
@@ -109,7 +201,7 @@ export const useAuthState = () => {
   }
 
   const signUpWithPassword = async (email: string, password: string) => {
-    const supabase = useSupabaseBrowserClient()
+    const supabase = await getSupabaseClient()
     const { data, error } = await supabase.auth.signUp({
       email,
       password
@@ -124,7 +216,7 @@ export const useAuthState = () => {
   }
 
   const sendMagicLink = async (email: string, nextPath?: string) => {
-    const supabase = useSupabaseBrowserClient()
+    const supabase = await getSupabaseClient()
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
@@ -145,7 +237,7 @@ export const useAuthState = () => {
       scopes?: string
     }
   ) => {
-    const supabase = useSupabaseBrowserClient()
+    const supabase = await getSupabaseClient()
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
@@ -176,14 +268,14 @@ export const useAuthState = () => {
   }
 
   const signOut = async () => {
-    const supabase = useSupabaseBrowserClient()
+    const supabase = await getSupabaseClient()
     await supabase.auth.signOut()
     await applySession(null)
   }
 
   const authHeaders = computed<Record<string, string>>(() => {
     if (!session.value?.access_token) {
-      return {}
+      return {} as Record<string, string>
     }
 
     return {
