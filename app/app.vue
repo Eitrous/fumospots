@@ -1,6 +1,5 @@
 <script setup lang="ts">
 const localeHead = useLocaleHead()
-const config = useRuntimeConfig()
 
 const themeInitScript = `(() => {
   try {
@@ -20,8 +19,7 @@ useHead(() => ({
   htmlAttrs: localeHead.value.htmlAttrs,
   link: [
     ...(localeHead.value.link || []),
-    { rel: 'icon', type: 'image/png', href: '/favicon.png' },
-    { rel: 'prefetch', href: config.public.pmtilesUrl }
+    { rel: 'icon', type: 'image/png', href: '/favicon.png' }
   ],
   meta: localeHead.value.meta,
   script: [
