@@ -8,7 +8,11 @@ import {
   normalizeContentType,
   normalizeStoragePathInput
 } from '~~/server/utils/storagePath'
-import { createSignedUploadUrl, ensureStorageObjectMissing } from '~~/server/utils/storage'
+import {
+  createSignedUploadUrl,
+  ensureStorageObjectMissing,
+  IMMUTABLE_STORAGE_CACHE_CONTROL
+} from '~~/server/utils/storage'
 
 type SignUploadBody = {
   path?: unknown
@@ -54,6 +58,7 @@ export default defineEventHandler(async (event) => {
     preventOverwrite: true
   })
   const headers = {
+    'Cache-Control': IMMUTABLE_STORAGE_CACHE_CONTROL,
     'Content-Type': contentType,
     'If-None-Match': '*'
   }
