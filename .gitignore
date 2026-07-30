@@ -31,3 +31,4 @@ scripts/r2-refresh-pmtiles-cache.ps1
 .vercel
 .env*.local
 .understand-anything/
+temp/

@@ -149,8 +149,7 @@ export const buildHostedMapStyle = (
       [MAP_SOURCE_NAME]: {
         type: 'vector',
         url: toPmtilesProtocolUrl(pmtilesUrl),
-        attribution: MAP_ATTRIBUTION,
-        maxzoom: 8
+        attribution: MAP_ATTRIBUTION
       }
     },
     layers: applyBuildingLayerOverrides(styleLayers)
