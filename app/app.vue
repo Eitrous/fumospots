@@ -1,5 +1,6 @@
 <script setup lang="ts">
-const localeHead = useLocaleHead()
+const localeHead = useLocaleHead();
+const config = useRuntimeConfig();
 
 const themeInitScript = `(() => {
   try {
@@ -13,23 +14,32 @@ const themeInitScript = `(() => {
   } catch {
     // Ignore theme initialization failures and fallback to CSS defaults.
   }
-})()`
+})()`;
 
 useHead(() => ({
   htmlAttrs: localeHead.value.htmlAttrs,
   link: [
     ...(localeHead.value.link || []),
-    { rel: 'icon', type: 'image/png', href: '/favicon.png' }
+    { rel: "icon", type: "image/png", href: "/favicon.png" },
   ],
   meta: localeHead.value.meta,
   script: [
     {
-      key: 'theme-init',
-      tagPosition: 'head',
-      children: themeInitScript
-    }
-  ]
-}))
+      key: "theme-init",
+      tagPosition: "head",
+      children: themeInitScript,
+    },
+    {
+      key: "cloudflare-web-analytics",
+      type: "module",
+      src: "https://static.cloudflareinsights.com/beacon.min.js",
+      tagPosition: "bodyClose",
+      "data-cf-beacon": JSON.stringify({
+        token: config.public.cloudflareWebAnalyticsToken,
+      }),
+    },
+  ],
+}));
 </script>
 
 <template>

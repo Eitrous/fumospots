@@ -63,7 +63,9 @@ export default defineNuxtConfig({
       supabaseAnonKey: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY,
       mapStyleUrl: process.env.NUXT_PUBLIC_MAP_STYLE_URL || MAP_DEFAULT_STYLE_URL,
       mapDarkStyleUrl: process.env.NUXT_PUBLIC_MAP_DARK_STYLE_URL || MAP_DARK_STYLE_URL,
-      pmtilesUrl: process.env.NUXT_PUBLIC_PM_TILES_URL || ''
+      pmtilesUrl: process.env.NUXT_PUBLIC_PM_TILES_URL || '',
+      cloudflareWebAnalyticsToken:
+      process.env.NUXT_PUBLIC_CLOUDFLARE_WEB_ANALYTICS_TOKEN || ''
     }
   }
 })
