@@ -34,6 +34,8 @@ const MIN_SIGNED_URL_TTL_SECONDS = 30
 const MAX_SIGNED_URL_TTL_SECONDS = 60 * 60 * 24
 const MAX_DELETE_BATCH = 1000
 
+export const IMMUTABLE_STORAGE_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+
 let cachedClient: S3Client | null = null
 let cachedClientKey = ''
 
@@ -269,6 +271,7 @@ export const createSignedUploadUrl = async (
   const command = new PutObjectCommand({
     Bucket: config.bucket,
     Key: path,
+    CacheControl: IMMUTABLE_STORAGE_CACHE_CONTROL,
     ContentLength: options.contentLength,
     ContentType: options.contentType,
     IfNoneMatch: options.preventOverwrite === false ? undefined : '*'
@@ -276,7 +279,12 @@ export const createSignedUploadUrl = async (
 
   return getSignedUrl(client, command, {
     expiresIn: ttl,
-    signableHeaders: new Set(['content-length', 'content-type', 'if-none-match'])
+    signableHeaders: new Set([
+      'cache-control',
+      'content-length',
+      'content-type',
+      'if-none-match'
+    ])
   })
 }
 
@@ -344,6 +352,7 @@ export const uploadStorageObject = async (
     Bucket: config.bucket,
     Key: path,
     Body: payload,
+    CacheControl: IMMUTABLE_STORAGE_CACHE_CONTROL,
     ContentType: options.contentType || 'application/octet-stream'
   }))
 }
