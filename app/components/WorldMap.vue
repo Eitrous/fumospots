@@ -123,6 +123,8 @@ const CLUSTER_ZOOM_STEP = 0.85;
 const MARKER_APPEAR_DURATION_MS = 240;
 const MARKER_APPEAR_START_OPACITY = 0.62;
 const MARKER_APPEAR_START_SCALE = 0.35;
+const MAP_SOURCE_FOCUS_REFRESH_DEBOUNCE_MS = 250;
+const MAP_SOURCE_FRESHNESS_MS = 60_000;
 const POINT_MARKER_MIN_RADIUS_PX = 2.5;
 const POINT_MARKER_RADIUS_ZOOM_MIN = 2;
 const POINT_MARKER_RADIUS_ZOOM_MAX = 12;
@@ -280,7 +282,10 @@ let pendingRegionFitKey: string | null = null;
 let mapInteractionsBound = false;
 let initialSourceLoaded = false;
 let initialSourceLoadScheduled = false;
+let lastMapSourceLoadedAt = 0;
 let mapPostsAbortController: AbortController | null = null;
+let visibleMapSourceRefreshPromise: Promise<void> | null = null;
+let visibleMapSourceRefreshTimer: number | null = null;
 let mapResizeObserver: ResizeObserver | null = null;
 let mapResizeFrame: number | null = null;
 let mapRuntimeSyncFrame: number | null = null;
@@ -1465,6 +1470,7 @@ const refreshSource = async (
     }
 
     collection.value = nextCollection;
+    lastMapSourceLoadedAt = Date.now();
     previewGroupCache.clear();
     closeActivePreview();
     syncSelectionSource();
@@ -2137,12 +2143,58 @@ const scheduleMapRuntimeSync = () => {
   });
 };
 
-const refreshVisibleMapSource = () => {
-  if (!import.meta.client || !initialSourceLoaded || document.hidden) {
+const clearVisibleMapSourceRefreshTimer = () => {
+  if (!import.meta.client || visibleMapSourceRefreshTimer === null) {
     return;
   }
 
-  void refreshSource();
+  window.clearTimeout(visibleMapSourceRefreshTimer);
+  visibleMapSourceRefreshTimer = null;
+};
+
+const isMapSourceFresh = () => {
+  return Date.now() - lastMapSourceLoadedAt < MAP_SOURCE_FRESHNESS_MS;
+};
+
+const runVisibleMapSourceRefresh = () => {
+  visibleMapSourceRefreshTimer = null;
+
+  if (
+    !import.meta.client ||
+    !initialSourceLoaded ||
+    document.hidden ||
+    isMapSourceFresh() ||
+    visibleMapSourceRefreshPromise ||
+    mapPostsAbortController
+  ) {
+    return;
+  }
+
+  const refreshPromise = refreshSource();
+  visibleMapSourceRefreshPromise = refreshPromise;
+
+  void refreshPromise.finally(() => {
+    if (visibleMapSourceRefreshPromise === refreshPromise) {
+      visibleMapSourceRefreshPromise = null;
+    }
+  });
+};
+
+const scheduleVisibleMapSourceRefresh = () => {
+  if (!import.meta.client) {
+    return;
+  }
+
+  clearVisibleMapSourceRefreshTimer();
+
+  if (!initialSourceLoaded || document.hidden || isMapSourceFresh()) {
+    return;
+  }
+
+  visibleMapSourceRefreshTimer = window.setTimeout(
+    runVisibleMapSourceRefresh,
+    MAP_SOURCE_FOCUS_REFRESH_DEBOUNCE_MS,
+  );
 };
 
 const teardownPreviewSheetPointerListeners = () => {
@@ -2281,9 +2333,12 @@ onMounted(async () => {
 
   finishMapLoading();
 
-  window.addEventListener("focus", refreshVisibleMapSource);
+  window.addEventListener("focus", scheduleVisibleMapSourceRefresh);
   window.addEventListener("resize", handleWindowResize);
-  document.addEventListener("visibilitychange", refreshVisibleMapSource);
+  document.addEventListener(
+    "visibilitychange",
+    scheduleVisibleMapSourceRefresh,
+  );
 
   mapRef.value.on("load", handleMapStyleLoad);
   mapRef.value.on("styledata", scheduleMapRuntimeSync);
@@ -2347,6 +2402,8 @@ onBeforeUnmount(() => {
   previewRequestSequence += 1;
   mapPostsAbortController?.abort();
   mapPostsAbortController = null;
+  visibleMapSourceRefreshPromise = null;
+  clearVisibleMapSourceRefreshTimer();
   resetBaseMapTileLoading();
   teardownPreviewSheetPointerListeners();
   mapResizeObserver?.disconnect();
@@ -2369,9 +2426,12 @@ onBeforeUnmount(() => {
   }
   clearBaseMapHealthCheckTimer();
   clearBaseMapRecoveryTimer();
-  window.removeEventListener("focus", refreshVisibleMapSource);
+  window.removeEventListener("focus", scheduleVisibleMapSourceRefresh);
   window.removeEventListener("resize", handleWindowResize);
-  document.removeEventListener("visibilitychange", refreshVisibleMapSource);
+  document.removeEventListener(
+    "visibilitychange",
+    scheduleVisibleMapSourceRefresh,
+  );
   unbindMapInteractions();
   mapRef.value?.remove();
 });
