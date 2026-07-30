@@ -143,14 +143,15 @@ const setRateLimitHeaders = (
   setResponseHeader(event, 'X-RateLimit-Reset', String(Math.ceil(result.reset / 1000)))
 
   if (!result.success) {
-    setResponseHeader(event, 'Retry-After', String(resetInSeconds))
+    setResponseHeader(event, 'Retry-After', resetInSeconds)
   }
 }
 
 export const enforceRateLimit = async (
   event: H3Event,
   key: RateLimitKey,
-  identifier: string
+  identifier: string,
+  rate = 1
 ) => {
   const activeLimiters = getLimiters()
 
@@ -169,7 +170,7 @@ export const enforceRateLimit = async (
     })
   }
 
-  const result = await activeLimiters[key].limit(identifier)
+  const result = await activeLimiters[key].limit(identifier, { rate })
   setRateLimitHeaders(event, result)
 
   if (!result.success) {
@@ -183,6 +184,7 @@ export const enforceRateLimit = async (
         limiter: key,
         identifier,
         path: url.pathname,
+        rate,
         limit: result.limit,
         remaining: result.remaining,
         reset: result.reset

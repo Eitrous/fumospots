@@ -1,7 +1,6 @@
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
-  HeadObjectCommand,
   PutObjectCommand,
   S3Client
 } from '@aws-sdk/client-s3'
@@ -121,28 +120,6 @@ const getR2Client = (event: H3Event) => {
     client: cachedClient,
     config
   }
-}
-
-const isNotFoundError = (error: unknown) => {
-  if (!error || typeof error !== 'object') {
-    return false
-  }
-
-  const maybeError = error as {
-    name?: unknown
-    Code?: unknown
-    $metadata?: { httpStatusCode?: unknown }
-  }
-
-  const statusCode = Number(maybeError.$metadata?.httpStatusCode)
-  if (statusCode === 404) {
-    return true
-  }
-
-  const name = typeof maybeError.name === 'string' ? maybeError.name : ''
-  const code = typeof maybeError.Code === 'string' ? maybeError.Code : ''
-
-  return name === 'NotFound' || name === 'NoSuchKey' || code === 'NoSuchKey'
 }
 
 const streamToBuffer = async (stream: Readable) => {
@@ -288,28 +265,6 @@ export const createSignedUploadUrl = async (
   })
 }
 
-export const ensureStorageObjectMissing = async (event: H3Event, path: string) => {
-  const { client, config } = getR2Client(event)
-
-  try {
-    await client.send(new HeadObjectCommand({
-      Bucket: config.bucket,
-      Key: path
-    }))
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return
-    }
-
-    throw error
-  }
-
-  throw createError({
-    statusCode: 409,
-    statusMessage: 'Storage object already exists.'
-  })
-}
-
 export const downloadStorageObject = async (event: H3Event, path: string) => {
   const { client, config } = getR2Client(event)
 
@@ -333,27 +288,13 @@ export const uploadStorageObject = async (
   const { client, config } = getR2Client(event)
   const upsert = options.upsert ?? true
 
-  if (!upsert) {
-    try {
-      await client.send(new HeadObjectCommand({
-        Bucket: config.bucket,
-        Key: path
-      }))
-
-      throw new Error(`Object already exists at ${path}.`)
-    } catch (error) {
-      if (!isNotFoundError(error)) {
-        throw error
-      }
-    }
-  }
-
   await client.send(new PutObjectCommand({
     Bucket: config.bucket,
     Key: path,
     Body: payload,
     CacheControl: IMMUTABLE_STORAGE_CACHE_CONTROL,
-    ContentType: options.contentType || 'application/octet-stream'
+    ContentType: options.contentType || 'application/octet-stream',
+    IfNoneMatch: upsert ? undefined : '*'
   }))
 }
 
@@ -380,9 +321,11 @@ export const deleteStorageObjects = async (
 
     if (result.Errors?.length) {
       const firstError = result.Errors[0]
-      throw new Error(
-        `Failed to delete storage objects: ${firstError.Key || 'unknown'} ${firstError.Code || ''}`.trim()
-      )
+      if (firstError) {
+        throw new Error(
+          `Failed to delete storage objects: ${firstError.Key || 'unknown'} ${firstError.Code || ''}`.trim()
+        )
+      }
     }
 
     deletedCount += result.Deleted?.length || 0
