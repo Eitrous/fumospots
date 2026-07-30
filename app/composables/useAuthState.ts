@@ -3,6 +3,8 @@ import type { CurrentViewer } from '~~/shared/fumo'
 
 let listenerBound = false
 let authInitializationPromise: Promise<void> | null = null
+let unauthorizedSessionRefreshPromise: Promise<Session> | null = null
+let authStateRevision = 0
 type OAuthProvider = 'github' | 'google' | 'azure'
 const AUTH_ACCESS_TOKEN_COOKIE = 'fumo_access_token'
 const AUTH_ACCESS_TOKEN_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
@@ -46,6 +48,27 @@ const hasStoredSupabaseSession = (supabaseUrl: string) => {
   }
 }
 
+const getFetchStatusCode = (error: unknown) => {
+  if (!error || typeof error !== 'object') {
+    return null
+  }
+
+  const fetchError = error as {
+    status?: unknown
+    statusCode?: unknown
+    response?: {
+      status?: unknown
+    }
+  }
+  const statusCode = Number(
+    fetchError.statusCode
+    ?? fetchError.status
+    ?? fetchError.response?.status
+  )
+
+  return Number.isInteger(statusCode) ? statusCode : null
+}
+
 export const useAuthState = () => {
   const config = useRuntimeConfig()
   const session = useState<Session | null>('auth:session', () => null)
@@ -74,7 +97,47 @@ export const useAuthState = () => {
     return redirectTarget.toString()
   }
 
-  const applySession = async (nextSession: Session | null) => {
+  const refreshSessionAfterUnauthorized = async () => {
+    if (unauthorizedSessionRefreshPromise) {
+      return unauthorizedSessionRefreshPromise
+    }
+
+    const refreshPromise = (async () => {
+      const supabase = await useSupabaseBrowserClient()
+      const { data, error } = await supabase.auth.refreshSession()
+
+      if (error) {
+        throw error
+      }
+
+      const refreshedSession = data.session
+      if (!refreshedSession?.access_token) {
+        throw new Error('Supabase did not return a refreshed session.')
+      }
+
+      return refreshedSession
+    })()
+
+    unauthorizedSessionRefreshPromise = refreshPromise
+
+    try {
+      return await refreshPromise
+    } finally {
+      if (unauthorizedSessionRefreshPromise === refreshPromise) {
+        unauthorizedSessionRefreshPromise = null
+      }
+    }
+  }
+
+  const applySession = async (
+    nextSession: Session | null,
+    options: {
+      retryUnauthorized?: boolean
+    } = {}
+  ) => {
+    const revision = ++authStateRevision
+    const retryUnauthorized = options.retryUnauthorized !== false
+
     session.value = nextSession
     user.value = nextSession?.user ?? null
     accessTokenCookie.value = nextSession?.access_token ?? null
@@ -86,15 +149,39 @@ export const useAuthState = () => {
     }
 
     try {
-      viewer.value = await $fetch<CurrentViewer>('/api/profile/me', {
+      const nextViewer = await $fetch<CurrentViewer>('/api/profile/me', {
         headers: {
           Authorization: `Bearer ${nextSession.access_token}`
         }
       })
-    } catch {
-      viewer.value = null
+
+      if (revision === authStateRevision) {
+        viewer.value = nextViewer
+      }
+    } catch (error) {
+      if (retryUnauthorized && getFetchStatusCode(error) === 401) {
+        try {
+          const refreshedSession = await refreshSessionAfterUnauthorized()
+
+          if (revision === authStateRevision) {
+            await applySession(refreshedSession, {
+              retryUnauthorized: false
+            })
+          }
+
+          return
+        } catch {
+          // Fall through to the existing viewer request failure handling.
+        }
+      }
+
+      if (revision === authStateRevision) {
+        viewer.value = null
+      }
     } finally {
-      ready.value = true
+      if (revision === authStateRevision) {
+        ready.value = true
+      }
     }
   }
 
@@ -104,8 +191,10 @@ export const useAuthState = () => {
     }
 
     listenerBound = true
-    supabase.auth.onAuthStateChange((_event, nextSession) => {
-      void applySession(nextSession ?? null)
+    supabase.auth.onAuthStateChange((event, nextSession) => {
+      void applySession(nextSession ?? null, {
+        retryUnauthorized: event !== 'TOKEN_REFRESHED'
+      })
     })
   }
 
