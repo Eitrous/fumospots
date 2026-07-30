@@ -1,5 +1,5 @@
-import { setHeader } from 'h3'
 import type { PublicMapPreviewResponse } from '~~/shared/fumo'
+import { setPublicApiCacheControl } from '~~/server/utils/cacheControl'
 import { createPublicServerClient, signStorageObjects } from '~~/server/utils/supabase'
 import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
 
@@ -59,7 +59,7 @@ export default defineEventHandler(async (event): Promise<PublicMapPreviewRespons
 
   const ids = parseIds(getQuery(event).ids)
   if (!ids.length) {
-    setHeader(event, 'Cache-Control', 'no-store')
+    setPublicApiCacheControl(event)
     return {
       items: []
     }
@@ -94,7 +94,7 @@ export default defineEventHandler(async (event): Promise<PublicMapPreviewRespons
 
   const coverUrls = await signStorageObjects(event, [...coverPathById.values()], 60 * 30)
 
-  setHeader(event, 'Cache-Control', 'no-store')
+  setPublicApiCacheControl(event)
 
   return {
     items: rows.map((row) => ({

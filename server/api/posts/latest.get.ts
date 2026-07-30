@@ -1,5 +1,5 @@
-import { setHeader } from 'h3'
 import type { PublicLatestPostsResponse } from '~~/shared/fumo'
+import { setPublicApiCacheControl } from '~~/server/utils/cacheControl'
 import { createPublicServerClient, signStorageObjects } from '~~/server/utils/supabase'
 import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
 
@@ -45,7 +45,7 @@ export default defineEventHandler(async (event): Promise<PublicLatestPostsRespon
 
   const coverUrls = await signStorageObjects(event, [...coverPathById.values()], 60 * 30)
 
-  setHeader(event, 'Cache-Control', 'no-store')
+  setPublicApiCacheControl(event)
 
   return {
     items: rows.map((row) => ({

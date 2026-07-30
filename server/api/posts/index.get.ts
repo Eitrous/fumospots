@@ -1,5 +1,6 @@
-import { getQuery, setHeader } from 'h3'
+import { getQuery } from 'h3'
 import type { PublicPostsPageResponse } from '~~/shared/fumo'
+import { setPublicApiCacheControl } from '~~/server/utils/cacheControl'
 import { createPublicServerClient, signStorageObjects } from '~~/server/utils/supabase'
 import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
 
@@ -83,7 +84,7 @@ export default defineEventHandler(async (event): Promise<PublicPostsPageResponse
   const postCount = count ?? rows.length
   const nextOffset = offset + rows.length < postCount ? offset + rows.length : null
 
-  setHeader(event, 'Cache-Control', 'no-store')
+  setPublicApiCacheControl(event)
 
   return {
     postCount,
