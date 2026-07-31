@@ -61,7 +61,10 @@ export default defineNuxtConfig({
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3000',
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY,
-      emailAuthEnabled: process.env.NUXT_PUBLIC_EMAIL_AUTH_ENABLED || 'true',
+      emailPasswordAuthEnabled:
+        process.env.NUXT_PUBLIC_EMAIL_PASSWORD_AUTH_ENABLED || 'true',
+      emailLinkAuthEnabled:
+        process.env.NUXT_PUBLIC_EMAIL_LINK_AUTH_ENABLED || 'false',
       mapStyleUrl: process.env.NUXT_PUBLIC_MAP_STYLE_URL || MAP_DEFAULT_STYLE_URL,
       mapDarkStyleUrl: process.env.NUXT_PUBLIC_MAP_DARK_STYLE_URL || MAP_DARK_STYLE_URL,
       pmtilesUrl: process.env.NUXT_PUBLIC_PM_TILES_URL || '',

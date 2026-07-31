@@ -69,7 +69,10 @@ const getFetchStatusCode = (error: unknown) => {
   return Number.isInteger(statusCode) ? statusCode : null
 }
 
-const EMAIL_AUTH_DISABLED_ERROR_MESSAGE = 'Email authentication is disabled by configuration.'
+const EMAIL_PASSWORD_AUTH_DISABLED_ERROR_MESSAGE =
+  'Email password authentication is disabled by configuration.'
+const EMAIL_LINK_AUTH_DISABLED_ERROR_MESSAGE =
+  'Email link authentication is disabled by configuration.'
 
 export const useAuthState = () => {
   const config = useRuntimeConfig()
@@ -87,13 +90,22 @@ export const useAuthState = () => {
 
   const hasUsername = computed(() => Boolean(viewer.value?.profile.username))
   const isAdmin = computed(() => viewer.value?.profile.role === 'admin')
-  const emailAuthEnabled = computed(() =>
-    String(config.public.emailAuthEnabled).trim().toLowerCase() !== 'false'
+  const emailPasswordAuthEnabled = computed(() =>
+    String(config.public.emailPasswordAuthEnabled).trim().toLowerCase() !== 'false'
+  )
+  const emailLinkAuthEnabled = computed(() =>
+    String(config.public.emailLinkAuthEnabled).trim().toLowerCase() !== 'false'
   )
 
-  const assertEmailAuthEnabled = () => {
-    if (!emailAuthEnabled.value) {
-      throw new Error(EMAIL_AUTH_DISABLED_ERROR_MESSAGE)
+  const assertEmailPasswordAuthEnabled = () => {
+    if (!emailPasswordAuthEnabled.value) {
+      throw new Error(EMAIL_PASSWORD_AUTH_DISABLED_ERROR_MESSAGE)
+    }
+  }
+
+  const assertEmailLinkAuthEnabled = () => {
+    if (!emailLinkAuthEnabled.value) {
+      throw new Error(EMAIL_LINK_AUTH_DISABLED_ERROR_MESSAGE)
     }
   }
 
@@ -286,7 +298,7 @@ export const useAuthState = () => {
   }
 
   const signInWithPassword = async (email: string, password: string) => {
-    assertEmailAuthEnabled()
+    assertEmailPasswordAuthEnabled()
     const supabase = await getSupabaseClient()
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -302,7 +314,7 @@ export const useAuthState = () => {
   }
 
   const signUpWithPassword = async (email: string, password: string) => {
-    assertEmailAuthEnabled()
+    assertEmailPasswordAuthEnabled()
     const supabase = await getSupabaseClient()
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -318,7 +330,7 @@ export const useAuthState = () => {
   }
 
   const sendMagicLink = async (email: string, nextPath?: string) => {
-    assertEmailAuthEnabled()
+    assertEmailLinkAuthEnabled()
     const supabase = await getSupabaseClient()
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -394,7 +406,8 @@ export const useAuthState = () => {
     initializing,
     hasUsername,
     isAdmin,
-    emailAuthEnabled,
+    emailPasswordAuthEnabled,
+    emailLinkAuthEnabled,
     authHeaders,
     init,
     refreshViewer,

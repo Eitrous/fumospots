@@ -30,7 +30,8 @@ const requiresPassword = computed(() => mode.value !== null && mode.value !== 'l
 const requiresConfirmPassword = computed(() => mode.value === 'register')
 const hasSelectedMode = computed(() => mode.value !== null)
 const isRegisterSection = computed(() => authSection.value === 'register')
-const emailAuthEnabled = auth.emailAuthEnabled
+const emailPasswordAuthEnabled = auth.emailPasswordAuthEnabled
+const emailLinkAuthEnabled = auth.emailLinkAuthEnabled
 const formStackRef = ref<HTMLElement | null>(null)
 
 const resetLocalState = () => {
@@ -62,7 +63,8 @@ const modeOptions = computed(() => {
         value: 'register' as const,
         label: t('auth.register'),
         icon: 'fa-envelope',
-        disabled: !emailAuthEnabled.value
+        disabled: !emailPasswordAuthEnabled.value,
+        unavailableMessage: t('auth.passwordAuthTemporarilyUnavailable')
       }
     ]
   }
@@ -72,13 +74,15 @@ const modeOptions = computed(() => {
       value: 'password' as const,
       label: t('auth.passwordLogin'),
       icon: 'fa-key',
-      disabled: !emailAuthEnabled.value
+      disabled: !emailPasswordAuthEnabled.value,
+      unavailableMessage: t('auth.passwordAuthTemporarilyUnavailable')
     },
     {
       value: 'link' as const,
       label: t('auth.linkLogin'),
       icon: 'fa-envelope',
-      disabled: !emailAuthEnabled.value
+      disabled: !emailLinkAuthEnabled.value,
+      unavailableMessage: t('auth.linkTemporarilyUnavailable')
     }
   ]
 })
@@ -171,8 +175,9 @@ watch(
 )
 
 const setMode = (nextMode: AuthMode) => {
-  if (!emailAuthEnabled.value) {
-    errorMessage.value = t('auth.emailTemporarilyUnavailable')
+  const nextOption = modeOptions.value.find((option) => option.value === nextMode)
+  if (nextOption?.disabled) {
+    errorMessage.value = nextOption.unavailableMessage
     return
   }
 
@@ -222,8 +227,9 @@ const submitAuth = async () => {
   errorMessage.value = ''
   successMessage.value = ''
 
-  if (!emailAuthEnabled.value) {
-    errorMessage.value = t('auth.emailTemporarilyUnavailable')
+  const selectedOption = modeOptions.value.find((option) => option.value === mode.value)
+  if (selectedOption?.disabled) {
+    errorMessage.value = selectedOption.unavailableMessage
     return
   }
 
@@ -310,8 +316,10 @@ const submitOAuthByProvider = async (provider: 'github' | 'google' | 'microsoft'
 }
 
 const canSubmit = computed(() => {
-  return emailAuthEnabled.value
-    && hasSelectedMode.value
+  const selectedOption = modeOptions.value.find((option) => option.value === mode.value)
+
+  return hasSelectedMode.value
+    && !selectedOption?.disabled
     && Boolean(email.value.trim())
     && !submitting.value
 })
@@ -378,7 +386,7 @@ useWorkbenchToolbarAction(computed(() => ({
         role="tab"
         :aria-selected="mode === option.value"
         :disabled="submitting || option.disabled"
-        :title="option.disabled ? t('auth.emailTemporarilyUnavailable') : option.label"
+        :title="option.disabled ? option.unavailableMessage : option.label"
         :aria-label="option.disabled
           ? t('auth.unavailableMethodLabel', { method: option.label })
           : option.label"
