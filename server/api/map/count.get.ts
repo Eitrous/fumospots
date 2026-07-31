@@ -2,6 +2,7 @@ import {
   createAdminServerClient,
   createPublicServerClient
 } from '~~/server/utils/supabase'
+import { setPublicApiCacheControl } from '~~/server/utils/cacheControl'
 import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
 import type { PublicMapCountResponse } from '~~/shared/fumo'
 
@@ -28,6 +29,8 @@ export default defineEventHandler(async (event): Promise<PublicMapCountResponse>
       statusMessage: postCountError?.message || registeredUserCountError?.message || 'Failed to load map stats.'
     })
   }
+
+  setPublicApiCacheControl(event)
 
   return {
     count: postCount || 0,

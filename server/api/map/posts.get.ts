@@ -1,5 +1,6 @@
-import { setHeader, type H3Event } from 'h3'
+import type { H3Event } from 'h3'
 import type { PublicMapPointCollection } from '~~/shared/fumo'
+import { setPublicApiCacheControl } from '~~/server/utils/cacheControl'
 import { createPublicServerClient } from '~~/server/utils/supabase'
 import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
 
@@ -67,7 +68,7 @@ export default defineEventHandler(async (event) => {
 
   const response = await fetchMapPosts(event)
 
-  setHeader(event, 'Cache-Control', 'no-store')
+  setPublicApiCacheControl(event)
 
   return response
 })

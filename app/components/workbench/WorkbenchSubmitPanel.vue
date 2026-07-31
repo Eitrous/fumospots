@@ -33,6 +33,25 @@ type SignedUploadTarget = {
   size: number
 }
 
+type StorageUploadCandidate = {
+  path: string
+  contentType: string
+  file: Blob
+}
+
+type PreparedPhotoUpload = {
+  photo: {
+    imagePath: string
+    thumbPath: string | null
+  }
+  skippedUploadSteps: number
+  uploads: StorageUploadCandidate[]
+}
+
+type SignedUploadTargetsResponse = {
+  targets: SignedUploadTarget[]
+}
+
 const ALLOWED_PHOTO_UPLOAD_TYPES = new Set([
   'image/avif',
   'image/gif',
@@ -48,6 +67,7 @@ const PHOTO_UPLOAD_EXTENSION_BY_TYPE = new Map([
   ['image/webp', 'webp']
 ])
 const DECIMAL_COORDINATE_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/
+const PHOTO_UPLOAD_CONCURRENCY = 3
 
 const props = withDefaults(defineProps<{
   mode?: 'create' | 'edit'
@@ -774,20 +794,50 @@ const advanceUploadProgress = (step = 1) => {
   )
 }
 
-const requestSignedUploadTarget = async (path: string, contentType: string, size: number) => {
+const requestSignedUploadTargets = async (
+  uploads: StorageUploadCandidate[]
+) => {
+  if (!uploads.length) {
+    return new Map<string, SignedUploadTarget>()
+  }
+
   if (!auth.authHeaders.value.Authorization) {
     throw new Error(t('submit.errors.sessionExpired'))
   }
 
-  return await $fetch<SignedUploadTarget>('/api/storage/sign-upload', {
+  const response = await $fetch<SignedUploadTargetsResponse>('/api/storage/sign-upload', {
     method: 'POST',
     headers: auth.authHeaders.value,
     body: {
-      path,
-      contentType,
-      size
+      targets: uploads.map((upload) => ({
+        path: upload.path,
+        contentType: upload.contentType,
+        size: upload.file.size
+      }))
     }
   })
+  const expectedByPath = new Map(uploads.map((upload) => [upload.path, upload]))
+  const targetByPath = new Map<string, SignedUploadTarget>()
+
+  for (const target of response.targets || []) {
+    const expected = expectedByPath.get(target.path)
+    if (
+      !expected
+      || targetByPath.has(target.path)
+      || target.contentType !== expected.contentType
+      || target.size !== expected.file.size
+    ) {
+      throw new Error('Invalid signed upload target response.')
+    }
+
+    targetByPath.set(target.path, target)
+  }
+
+  if (targetByPath.size !== uploads.length) {
+    throw new Error('Signed upload targets are incomplete.')
+  }
+
+  return targetByPath
 }
 
 const uploadWithSignedUrl = async (target: SignedUploadTarget, file: Blob) => {
@@ -802,17 +852,67 @@ const uploadWithSignedUrl = async (target: SignedUploadTarget, file: Blob) => {
   }
 }
 
-const uploadPhoto = async (
+const mapWithConcurrency = async <Item, Result>(
+  items: Item[],
+  maxConcurrency: number,
+  worker: (item: Item, index: number) => Promise<Result>
+) => {
+  if (!items.length) {
+    return [] as Result[]
+  }
+
+  const results = new Array<Result>(items.length)
+  const errors: unknown[] = []
+  let nextIndex = 0
+
+  const runWorker = async () => {
+    while (!errors.length) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+
+      if (currentIndex >= items.length) {
+        return
+      }
+
+      try {
+        results[currentIndex] = await worker(
+          items[currentIndex] as Item,
+          currentIndex
+        )
+      } catch (error) {
+        errors.push(error)
+        return
+      }
+    }
+  }
+
+  const workerCount = Math.min(
+    items.length,
+    Math.max(1, Math.floor(maxConcurrency))
+  )
+  await Promise.all(Array.from({ length: workerCount }, runWorker))
+
+  if (errors.length) {
+    throw errors[0]
+  }
+
+  return results
+}
+
+const preparePhotoUpload = async (
   photo: SelectedPhoto,
   index: number,
   postFolder: string,
-  userId: string,
-  uploadedPaths: string[]
-) => {
+  userId: string
+): Promise<PreparedPhotoUpload> => {
   if (!photo.file && photo.imagePath) {
     return {
-      imagePath: photo.imagePath,
-      thumbPath: photo.thumbPath
+      photo: {
+        imagePath: photo.imagePath,
+        thumbPath: photo.thumbPath
+      },
+      skippedUploadSteps: 0,
+      uploads: []
     }
   }
 
@@ -847,30 +947,27 @@ const uploadPhoto = async (
     ? `${userId}/${postFolder}/${folderName}/thumb.webp`
     : null
 
-  const originalTarget = await requestSignedUploadTarget(
-    originalPath,
-    uploadOriginalFile.type,
-    uploadOriginalFile.size
-  )
-  await uploadWithSignedUrl(originalTarget, uploadOriginalFile)
-
-  uploadedPaths.push(originalPath)
-  advanceUploadProgress()
+  const uploads: StorageUploadCandidate[] = [{
+    path: originalPath,
+    contentType: uploadOriginalFile.type,
+    file: uploadOriginalFile
+  }]
 
   if (thumbnailFile && thumbPath) {
-    const thumbTarget = await requestSignedUploadTarget(thumbPath, 'image/webp', thumbnailFile.size)
-    await uploadWithSignedUrl(thumbTarget, thumbnailFile)
-
-    uploadedPaths.push(thumbPath)
-    advanceUploadProgress()
-  } else {
-    // Keep progress in sync when thumbnail conversion is skipped/failed.
-    advanceUploadProgress()
+    uploads.push({
+      path: thumbPath,
+      contentType: 'image/webp',
+      file: thumbnailFile
+    })
   }
 
   return {
-    imagePath: originalPath,
-    thumbPath
+    photo: {
+      imagePath: originalPath,
+      thumbPath
+    },
+    skippedUploadSteps: thumbnailFile ? 0 : 1,
+    uploads
   }
 }
 
@@ -918,15 +1015,41 @@ const submitPost = async () => {
   const postFolder = isEditMode.value && props.postId
     ? `edit-${props.postId}-${crypto.randomUUID()}`
     : crypto.randomUUID()
-  const uploadedPaths: string[] = []
+  const attemptedUploadPaths: string[] = []
   const photosToUpload = selectedPhotos.value.slice()
   startUploadProgress(photosToUpload)
 
   try {
-    const photos = []
-    for (const [index, photo] of photosToUpload.entries()) {
-      photos.push(await uploadPhoto(photo, index, postFolder, viewer.userId, uploadedPaths))
-    }
+    const preparedPhotos = await mapWithConcurrency(
+      photosToUpload,
+      PHOTO_UPLOAD_CONCURRENCY,
+      (photo, index) => {
+        return preparePhotoUpload(photo, index, postFolder, viewer.userId)
+      }
+    )
+    const photos = preparedPhotos.map((prepared) => prepared.photo)
+    const uploads = preparedPhotos.flatMap((prepared) => prepared.uploads)
+    const skippedUploadSteps = preparedPhotos.reduce((total, prepared) => {
+      return total + prepared.skippedUploadSteps
+    }, 0)
+
+    advanceUploadProgress(skippedUploadSteps)
+
+    const targetByPath = await requestSignedUploadTargets(uploads)
+    await mapWithConcurrency(
+      uploads,
+      PHOTO_UPLOAD_CONCURRENCY,
+      async (upload) => {
+        const target = targetByPath.get(upload.path)
+        if (!target) {
+          throw new Error('Signed upload target is missing.')
+        }
+
+        attemptedUploadPaths.push(upload.path)
+        await uploadWithSignedUrl(target, upload.file)
+        advanceUploadProgress()
+      }
+    )
 
     const payload: SubmitPostPayload = {
       title: title.value.trim(),
@@ -971,13 +1094,13 @@ const submitPost = async () => {
       emit('submitted', nextSuccessMessage)
     }
   } catch (error) {
-    if (uploadedPaths.length && auth.authHeaders.value.Authorization) {
+    if (attemptedUploadPaths.length && auth.authHeaders.value.Authorization) {
       try {
         await $fetch('/api/storage/delete', {
           method: 'POST',
           headers: auth.authHeaders.value,
           body: {
-            paths: uploadedPaths
+            paths: attemptedUploadPaths
           }
         })
       } catch {
