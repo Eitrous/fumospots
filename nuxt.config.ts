@@ -65,6 +65,8 @@ export default defineNuxtConfig({
         process.env.NUXT_PUBLIC_EMAIL_PASSWORD_AUTH_ENABLED || 'true',
       emailLinkAuthEnabled:
         process.env.NUXT_PUBLIC_EMAIL_LINK_AUTH_ENABLED || 'false',
+      emailRegistrationEnabled:
+        process.env.NUXT_PUBLIC_EMAIL_REGISTRATION_ENABLED || 'false',
       mapStyleUrl: process.env.NUXT_PUBLIC_MAP_STYLE_URL || MAP_DEFAULT_STYLE_URL,
       mapDarkStyleUrl: process.env.NUXT_PUBLIC_MAP_DARK_STYLE_URL || MAP_DARK_STYLE_URL,
       pmtilesUrl: process.env.NUXT_PUBLIC_PM_TILES_URL || '',

@@ -32,6 +32,7 @@ const hasSelectedMode = computed(() => mode.value !== null)
 const isRegisterSection = computed(() => authSection.value === 'register')
 const emailPasswordAuthEnabled = auth.emailPasswordAuthEnabled
 const emailLinkAuthEnabled = auth.emailLinkAuthEnabled
+const emailRegistrationEnabled = auth.emailRegistrationEnabled
 const formStackRef = ref<HTMLElement | null>(null)
 
 const resetLocalState = () => {
@@ -63,8 +64,8 @@ const modeOptions = computed(() => {
         value: 'register' as const,
         label: t('auth.register'),
         icon: 'fa-envelope',
-        disabled: !emailPasswordAuthEnabled.value,
-        unavailableMessage: t('auth.passwordAuthTemporarilyUnavailable')
+        disabled: !emailRegistrationEnabled.value,
+        unavailableMessage: t('auth.registrationTemporarilyUnavailable')
       }
     ]
   }
@@ -75,7 +76,7 @@ const modeOptions = computed(() => {
       label: t('auth.passwordLogin'),
       icon: 'fa-key',
       disabled: !emailPasswordAuthEnabled.value,
-      unavailableMessage: t('auth.passwordAuthTemporarilyUnavailable')
+      unavailableMessage: t('auth.passwordLoginTemporarilyUnavailable')
     },
     {
       value: 'link' as const,

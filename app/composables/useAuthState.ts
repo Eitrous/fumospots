@@ -73,6 +73,8 @@ const EMAIL_PASSWORD_AUTH_DISABLED_ERROR_MESSAGE =
   'Email password authentication is disabled by configuration.'
 const EMAIL_LINK_AUTH_DISABLED_ERROR_MESSAGE =
   'Email link authentication is disabled by configuration.'
+const EMAIL_REGISTRATION_DISABLED_ERROR_MESSAGE =
+  'Email registration is disabled by configuration.'
 
 export const useAuthState = () => {
   const config = useRuntimeConfig()
@@ -96,6 +98,9 @@ export const useAuthState = () => {
   const emailLinkAuthEnabled = computed(() =>
     String(config.public.emailLinkAuthEnabled).trim().toLowerCase() !== 'false'
   )
+  const emailRegistrationEnabled = computed(() =>
+    String(config.public.emailRegistrationEnabled).trim().toLowerCase() !== 'false'
+  )
 
   const assertEmailPasswordAuthEnabled = () => {
     if (!emailPasswordAuthEnabled.value) {
@@ -106,6 +111,12 @@ export const useAuthState = () => {
   const assertEmailLinkAuthEnabled = () => {
     if (!emailLinkAuthEnabled.value) {
       throw new Error(EMAIL_LINK_AUTH_DISABLED_ERROR_MESSAGE)
+    }
+  }
+
+  const assertEmailRegistrationEnabled = () => {
+    if (!emailRegistrationEnabled.value) {
+      throw new Error(EMAIL_REGISTRATION_DISABLED_ERROR_MESSAGE)
     }
   }
 
@@ -314,7 +325,7 @@ export const useAuthState = () => {
   }
 
   const signUpWithPassword = async (email: string, password: string) => {
-    assertEmailPasswordAuthEnabled()
+    assertEmailRegistrationEnabled()
     const supabase = await getSupabaseClient()
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -408,6 +419,7 @@ export const useAuthState = () => {
     isAdmin,
     emailPasswordAuthEnabled,
     emailLinkAuthEnabled,
+    emailRegistrationEnabled,
     authHeaders,
     init,
     refreshViewer,

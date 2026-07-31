@@ -28,9 +28,13 @@ type RateLimiterSet = Record<RateLimitKey, Ratelimit>
 const RATE_LIMIT_PREFIX = 'fumo:ratelimit'
 const REQUEST_IP_FALLBACK = 'unknown'
 const RATE_LIMIT_TIMEOUT_MS = 1000
+const RATE_LIMIT_WARNING_INTERVAL_MS = 60_000
+const FAIL_OPEN_KEYS = new Set<RateLimitKey>(['mapIp'])
 
 let limiters: RateLimiterSet | null = null
 let warnedMissingRedis = false
+let lastBackendWarningAt = 0
+let publicReadRateLimitUnavailableUntil = 0
 
 const hasUpstashConfig = () => {
   return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN)
@@ -154,9 +158,10 @@ export const enforceRateLimit = async (
   rate = 1
 ) => {
   const activeLimiters = getLimiters()
+  const failOpen = FAIL_OPEN_KEYS.has(key)
 
   if (!activeLimiters) {
-    if (import.meta.dev) {
+    if (import.meta.dev || failOpen) {
       if (!warnedMissingRedis) {
         warnedMissingRedis = true
         console.warn('Upstash Redis rate limiting is disabled because UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN is missing.')
@@ -170,7 +175,39 @@ export const enforceRateLimit = async (
     })
   }
 
-  const result = await activeLimiters[key].limit(identifier, { rate })
+  if (failOpen && Date.now() < publicReadRateLimitUnavailableUntil) {
+    return
+  }
+
+  let result: Awaited<ReturnType<Ratelimit['limit']>>
+
+  try {
+    result = await activeLimiters[key].limit(identifier, { rate })
+  } catch (error) {
+    const now = Date.now()
+
+    if (failOpen) {
+      publicReadRateLimitUnavailableUntil = now + RATE_LIMIT_WARNING_INTERVAL_MS
+    }
+
+    if (now - lastBackendWarningAt >= RATE_LIMIT_WARNING_INTERVAL_MS) {
+      lastBackendWarningAt = now
+      console.warn(
+        `Rate limiting backend failed for ${key}; ${failOpen ? 'allowing this public read request' : 'rejecting this request'}.`,
+        error
+      )
+    }
+
+    if (failOpen) {
+      return
+    }
+
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Rate limiting service is temporarily unavailable.'
+    })
+  }
+
   setRateLimitHeaders(event, result)
 
   if (!result.success) {
