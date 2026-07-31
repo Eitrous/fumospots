@@ -30,6 +30,7 @@ const requiresPassword = computed(() => mode.value !== null && mode.value !== 'l
 const requiresConfirmPassword = computed(() => mode.value === 'register')
 const hasSelectedMode = computed(() => mode.value !== null)
 const isRegisterSection = computed(() => authSection.value === 'register')
+const emailAuthEnabled = auth.emailAuthEnabled
 const formStackRef = ref<HTMLElement | null>(null)
 
 const resetLocalState = () => {
@@ -60,7 +61,8 @@ const modeOptions = computed(() => {
       {
         value: 'register' as const,
         label: t('auth.register'),
-        icon: 'fa-envelope'
+        icon: 'fa-envelope',
+        disabled: !emailAuthEnabled.value
       }
     ]
   }
@@ -69,12 +71,14 @@ const modeOptions = computed(() => {
     {
       value: 'password' as const,
       label: t('auth.passwordLogin'),
-      icon: 'fa-key'
+      icon: 'fa-key',
+      disabled: !emailAuthEnabled.value
     },
     {
       value: 'link' as const,
       label: t('auth.linkLogin'),
-      icon: 'fa-envelope'
+      icon: 'fa-envelope',
+      disabled: !emailAuthEnabled.value
     }
   ]
 })
@@ -167,6 +171,11 @@ watch(
 )
 
 const setMode = (nextMode: AuthMode) => {
+  if (!emailAuthEnabled.value) {
+    errorMessage.value = t('auth.emailTemporarilyUnavailable')
+    return
+  }
+
   mode.value = nextMode
   errorMessage.value = ''
   successMessage.value = ''
@@ -212,6 +221,11 @@ const validateForm = () => {
 const submitAuth = async () => {
   errorMessage.value = ''
   successMessage.value = ''
+
+  if (!emailAuthEnabled.value) {
+    errorMessage.value = t('auth.emailTemporarilyUnavailable')
+    return
+  }
 
   if (!validateForm()) {
     return
@@ -296,7 +310,10 @@ const submitOAuthByProvider = async (provider: 'github' | 'google' | 'microsoft'
 }
 
 const canSubmit = computed(() => {
-  return hasSelectedMode.value && Boolean(email.value.trim()) && !submitting.value
+  return emailAuthEnabled.value
+    && hasSelectedMode.value
+    && Boolean(email.value.trim())
+    && !submitting.value
 })
 
 useWorkbenchToolbarAction(computed(() => ({
@@ -353,16 +370,27 @@ useWorkbenchToolbarAction(computed(() => ({
         v-for="option in modeOptions"
         :key="option.value"
         class="auth-oauth-button auth-mode-entry"
-        :class="{ 'is-active': mode === option.value }"
+        :class="{
+          'is-active': mode === option.value,
+          'is-unavailable': option.disabled
+        }"
         type="button"
         role="tab"
         :aria-selected="mode === option.value"
-        :title="option.label"
-        :aria-label="option.label"
+        :disabled="submitting || option.disabled"
+        :title="option.disabled ? t('auth.emailTemporarilyUnavailable') : option.label"
+        :aria-label="option.disabled
+          ? t('auth.unavailableMethodLabel', { method: option.label })
+          : option.label"
         @click="setMode(option.value)"
       >
-        <i class="fa-solid" :class="option.icon" aria-hidden="true" />
-        <span>{{ option.label }}</span>
+        <span class="auth-mode-entry__label">
+          <i class="fa-solid" :class="option.icon" aria-hidden="true" />
+          <span>{{ option.label }}</span>
+        </span>
+        <span v-if="option.disabled" class="auth-mode-entry__status">
+          {{ t('auth.temporarilyUnavailable') }}
+        </span>
       </button>
     </div>
 

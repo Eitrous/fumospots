@@ -5,8 +5,10 @@ let listenerBound = false
 type OAuthProvider = 'github' | 'google' | 'azure'
 const AUTH_ACCESS_TOKEN_COOKIE = 'fumo_access_token'
 const AUTH_ACCESS_TOKEN_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
+const EMAIL_AUTH_DISABLED_ERROR_MESSAGE = 'Email authentication is disabled by configuration.'
 
 export const useAuthState = () => {
+  const config = useRuntimeConfig()
   const session = useState<Session | null>('auth:session', () => null)
   const user = useState<User | null>('auth:user', () => null)
   const viewer = useState<CurrentViewer | null>('auth:viewer', () => null)
@@ -21,6 +23,15 @@ export const useAuthState = () => {
 
   const hasUsername = computed(() => Boolean(viewer.value?.profile.username))
   const isAdmin = computed(() => viewer.value?.profile.role === 'admin')
+  const emailAuthEnabled = computed(() =>
+    String(config.public.emailAuthEnabled).trim().toLowerCase() !== 'false'
+  )
+
+  const assertEmailAuthEnabled = () => {
+    if (!emailAuthEnabled.value) {
+      throw new Error(EMAIL_AUTH_DISABLED_ERROR_MESSAGE)
+    }
+  }
 
   const createLoginRedirectTarget = (nextPath?: string) => {
     const redirectTarget = new URL('/', window.location.origin)
@@ -94,6 +105,7 @@ export const useAuthState = () => {
   }
 
   const signInWithPassword = async (email: string, password: string) => {
+    assertEmailAuthEnabled()
     const supabase = useSupabaseBrowserClient()
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
@@ -109,6 +121,7 @@ export const useAuthState = () => {
   }
 
   const signUpWithPassword = async (email: string, password: string) => {
+    assertEmailAuthEnabled()
     const supabase = useSupabaseBrowserClient()
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -124,6 +137,7 @@ export const useAuthState = () => {
   }
 
   const sendMagicLink = async (email: string, nextPath?: string) => {
+    assertEmailAuthEnabled()
     const supabase = useSupabaseBrowserClient()
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -199,6 +213,7 @@ export const useAuthState = () => {
     initializing,
     hasUsername,
     isAdmin,
+    emailAuthEnabled,
     authHeaders,
     init,
     refreshViewer,

@@ -1682,6 +1682,28 @@ html[data-theme="dark"] .auth-mode-switcher .workbench-icon-button.is-active {
   color: var(--accent);
 }
 
+/* .auth-mode-entry.is-unavailable {
+  justify-content: space-between;
+} */
+
+.auth-mode-entry.is-unavailable:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.auth-mode-entry__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.auth-mode-entry__status {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 .auth-form-stack {
   display: grid;
   gap: 1rem;
@@ -1720,6 +1742,14 @@ html[data-theme="dark"] .auth-oauth-button:focus-visible {
   border-color: var(--accent);
   background: var(--bg);
   color: var(--accent);
+}
+
+html[data-theme="dark"] .auth-mode-entry.is-unavailable:disabled,
+html[data-theme="dark"] .auth-mode-entry.is-unavailable:disabled:hover {
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--ink-muted);
+  transform: none;
 }
 
 html[data-theme="dark"] .auth-section-entry.is-active,
