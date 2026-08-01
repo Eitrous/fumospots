@@ -24,6 +24,7 @@ const buildCsp = (event: H3Event) => {
   const mapStyleOrigin = getOrigin(config.public.mapStyleUrl)
   const mapDarkStyleOrigin = getOrigin(config.public.mapDarkStyleUrl)
   const pmtilesOrigin = getOrigin(config.public.pmtilesUrl)
+  const geopoliticsPmtilesOrigin = getOrigin(config.public.geopoliticsPmtilesUrl)
   const defaultMapOrigin = getOrigin(MAP_DEFAULT_STYLE_URL)
   const darkMapOrigin = getOrigin(MAP_DARK_STYLE_URL)
 
@@ -45,6 +46,7 @@ const buildCsp = (event: H3Event) => {
     'https://*.supabase.co',
     'wss://*.supabase.co',
     pmtilesOrigin,
+    geopoliticsPmtilesOrigin,
     mapStyleOrigin,
     mapDarkStyleOrigin,
     defaultMapOrigin,
