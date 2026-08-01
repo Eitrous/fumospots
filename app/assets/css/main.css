@@ -4,7 +4,7 @@
 
 :root {
   color-scheme: light;
-  --bg: #FFFFFF;
+  --bg: #F2F3F2;
   --surface: #F2F3F2;
   --ink: #000000;
   --ink-muted: #646865;
@@ -22,6 +22,8 @@
   --font-display: 'Space Grotesk', 'Noto Sans SC', sans-serif;
   --font-body: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --header-height: 78px;
+  --test: #9ea5ad;
+  --disputed: #65573a;
 }
 
 html[data-theme="dark"] {
@@ -619,7 +621,7 @@ html[data-theme="dark"] .map-background-hint {
   height: 12px;
 }
 
-.site-root .maplibregl-ctrl-attrib {
+/* .site-root .maplibregl-ctrl-attrib {
   margin: 0 0.7rem 0.7rem 0 !important;
   padding: 0.2rem 0.45rem;
   border: none;
@@ -627,12 +629,21 @@ html[data-theme="dark"] .map-background-hint {
   background: var(--bg) !important;
   color: var(--ink-muted);
   box-shadow: none;
+} */
+
+/* .site-root .maplibregl-ctrl-attrib-button {
+  background: inherit !important;
+  color: inherit !important;
+} */
+
+.site-root .maplibregl-ctrl-attrib-button:focus {
+  box-shadow: 0 0 2px 2px var(--accent) !important;
 }
 
 .site-root .maplibregl-ctrl-attrib a {
   color: inherit !important;
 }
-
+/* 
 .site-root .maplibregl-ctrl-attrib-button {
   position: relative;
   background-color: var(--bg) !important;
@@ -661,11 +672,12 @@ html[data-theme="dark"] .map-background-hint {
   outline-offset: 2px;
   box-shadow: none !important;
 }
+*/
 
 html[data-theme="dark"] .site-root .maplibregl-ctrl-attrib {
   background: var(--bg) !important;
   color: var(--ink-muted) !important;
-}
+} 
 
 .map-overlay-status {
   position: absolute;

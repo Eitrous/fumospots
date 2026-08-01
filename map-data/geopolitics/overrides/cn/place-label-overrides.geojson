@@ -1,0 +1,26 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-place-taipei-city",
+        "view": "CN",
+        "label_kind": "city",
+        "rank": 4,
+        "minzoom": 5,
+        "maxzoom": 14,
+        "wikidata": "Q1867",
+        "name_zh_hans": "台北市",
+        "name_zh_hant": "臺北市",
+        "name_en": "Taipei",
+        "name_ja": "台北市",
+        "source_ref": "CN worldview policy"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [121.5654, 25.033]
+      }
+    }
+  ]
+}

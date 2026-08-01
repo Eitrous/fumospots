@@ -4,15 +4,12 @@ import type { LatLng, PrivacyMode } from '~~/shared/fumo'
 import { MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM } from '~~/shared/fumo'
 import { resolveHostedMapStyleUrl } from '~~/shared/mapStyle'
 import {
-  applySouthTibetRegionLabelPolicy,
-  applyTaiwanProvinceLabelPolicy
-} from '~~/app/composables/useMapPoliticalLabels'
-import {
   BASE_MAP_HEALTH_CHECK_DELAY_MS,
   BASE_MAP_HEALTH_CONFIRM_DELAY_MS,
   BASE_MAP_RECOVERY_MAX_ATTEMPTS,
   BASE_MAP_RECOVERY_RETRY_DELAYS_MS,
   BASE_MAP_SOURCE_NAME,
+  GEOPOLITICS_SOURCE_NAME,
   hasRenderedBaseMapFeatures,
   isBaseMapErrorEvent
 } from '~~/app/composables/useBaseMapHealth'
@@ -39,8 +36,6 @@ useMapResourceHints()
 const { targetRef: stageEl, isActivated } = useDeferredVisibility()
 const mapEl = ref<HTMLDivElement | null>(null)
 const mapRef = shallowRef<import('maplibre-gl').Map | null>(null)
-const southTibetRegionLabel = computed(() => t('map.southTibetRegionLabel'))
-const taiwanProvinceLabel = computed(() => t('map.taiwanProvinceLabel'))
 const mapLoadFailed = ref(false)
 
 let maplibregl: typeof import('maplibre-gl') | null = null
@@ -147,15 +142,6 @@ const fitBoundsToMarkers = () => {
   })
 }
 
-const applyPoliticalLabels = () => {
-  if (!mapRef.value || !mapRef.value.isStyleLoaded()) {
-    return
-  }
-
-  applyTaiwanProvinceLabelPolicy(mapRef.value, taiwanProvinceLabel.value)
-  applySouthTibetRegionLabelPolicy(mapRef.value, southTibetRegionLabel.value)
-}
-
 const clearBaseMapHealthCheckTimer = () => {
   if (!import.meta.client || baseMapHealthCheckTimer === null) {
     return
@@ -190,7 +176,6 @@ const prepareBaseMapForStyleLoad = (options: { resetAttempts?: boolean } = {}) =
 }
 
 const syncMapRuntimeState = () => {
-  applyPoliticalLabels()
   syncMarkers()
   fitBoundsToMarkers()
 }
@@ -264,10 +249,7 @@ const reloadBaseMapStyle = async () => {
       await recoverPmtilesProtocol(maplibregl)
     }
 
-    const style = await fetchHostedMapStyle(getMapStyleUrl(), {
-      southTibetRegionLabel: southTibetRegionLabel.value,
-      taiwanProvinceLabel: taiwanProvinceLabel.value
-    })
+    const style = await fetchHostedMapStyle(getMapStyleUrl())
 
     if (currentSequence !== mapStyleSequence || !mapRef.value || baseMapReady) {
       return
@@ -312,7 +294,11 @@ const handleMapError = (event: unknown) => {
 }
 
 const handleBaseMapSourceData = (event: MapSourceDataEvent) => {
-  if (event.sourceId !== BASE_MAP_SOURCE_NAME || !event.isSourceLoaded || baseMapReady) {
+  if (
+    ![BASE_MAP_SOURCE_NAME, GEOPOLITICS_SOURCE_NAME].includes(event.sourceId)
+    || !event.isSourceLoaded
+    || baseMapReady
+  ) {
     return
   }
 
@@ -349,10 +335,7 @@ watch([isDark, locale], async ([dark]) => {
   const currentSequence = ++mapStyleSequence
 
   try {
-    const style = await fetchHostedMapStyle(getMapStyleUrl(dark), {
-      southTibetRegionLabel: southTibetRegionLabel.value,
-      taiwanProvinceLabel: taiwanProvinceLabel.value
-    })
+    const style = await fetchHostedMapStyle(getMapStyleUrl(dark))
 
     if (currentSequence !== mapStyleSequence || !mapRef.value) {
       return
@@ -386,10 +369,7 @@ const initializeMap = async (options: { recoveryAttempt?: boolean } = {}) => {
       await registerPmtilesProtocol(maplibregl)
     }
 
-    const style = await fetchHostedMapStyle(getMapStyleUrl(), {
-      southTibetRegionLabel: southTibetRegionLabel.value,
-      taiwanProvinceLabel: taiwanProvinceLabel.value
-    })
+    const style = await fetchHostedMapStyle(getMapStyleUrl())
 
     prepareBaseMapForStyleLoad({
       resetAttempts: !options.recoveryAttempt
@@ -439,7 +419,6 @@ onMounted(() => {
 watch(
   () => [props.exactLocation, props.publicLocation, props.showExact, locale.value],
   () => {
-    applyPoliticalLabels()
     syncMarkers()
     fitBoundsToMarkers()
   },

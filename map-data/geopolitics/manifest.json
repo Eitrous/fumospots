@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "view": "CN",
+  "description": "Globally complete national and first-level political geography with PRC-view overrides.",
+  "sources": [
+    {
+      "id": "countries",
+      "version": "5.1.1",
+      "url": "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_0_countries_chn.zip",
+      "sha256": "16e7589083527d01208b9f645fc8643c767170258e9d13b59d37bc5a1f6a8758",
+      "stem": "ne_10m_admin_0_countries_chn"
+    },
+    {
+      "id": "admin0",
+      "version": "5.1.0",
+      "url": "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_0_boundary_lines_land.zip",
+      "sha256": "16ead035f539c8b6c23650c5845d86ad3556553e7456bdf9b4730210f26aacbe",
+      "stem": "ne_10m_admin_0_boundary_lines_land"
+    },
+    {
+      "id": "disputed",
+      "version": "5.1.0",
+      "url": "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_0_boundary_lines_disputed_areas.zip",
+      "sha256": "d9eedd54bcc222d25a41438dc1c547a4034e787f228ad04273038995bca27301",
+      "stem": "ne_10m_admin_0_boundary_lines_disputed_areas"
+    },
+    {
+      "id": "admin1",
+      "version": "5.1.0",
+      "url": "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_1_states_provinces_lines.zip",
+      "sha256": "86acd56ce6c0e47f5fa79725591533b5766f26d6ed1437b086f2b8d4028fe456",
+      "stem": "ne_10m_admin_1_states_provinces_lines"
+    },
+    {
+      "id": "region-labels",
+      "version": "5.1.0",
+      "url": "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_1_label_points_details.zip",
+      "sha256": "c139e66ddecebd403cab1a08fe25ecf4f26d042c0b5cabd55cc196f6c29202a3",
+      "stem": "ne_10m_admin_1_label_points_details"
+    },
+    {
+      "id": "maritime",
+      "version": "5.1.0",
+      "url": "https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_admin_0_boundary_lines_maritime_indicator_chn.zip",
+      "sha256": "f691e61db59d71ea8cc2c0121f890215f7279ade3a85c38e8e96960713212dfa",
+      "stem": "ne_10m_admin_0_boundary_lines_maritime_indicator_chn"
+    }
+  ],
+  "overrides": [
+    {
+      "id": "south-tibet-admin0",
+      "path": "overrides/cn/south-tibet-admin0-boundary.geojson",
+      "source": "西藏自治区自然资源厅标准地图，藏S（2024）034号"
+    },
+    {
+      "id": "south-tibet-places",
+      "path": "overrides/cn/south-tibet-place-labels.geojson",
+      "source": "西藏自治区自然资源厅标准地图，藏S（2024）034号"
+    },
+    {
+      "id": "south-tibet-exclusion",
+      "path": "overrides/cn/south-tibet-exclusion.geojson",
+      "source": "由标准地图国界与原底图北侧争议线构成的选择多边形"
+    }
+  ]
+}

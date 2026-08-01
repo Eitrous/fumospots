@@ -32,3 +32,9 @@ scripts/r2-refresh-pmtiles-cache.ps1
 .env*.local
 .understand-anything/
 temp/
+
+# Reproducible geopolitics build intermediates
+map-data/geopolitics/.cache/
+map-data/geopolitics/generated/
+map-data/geopolitics/dist/
+public/map-assets/geopolitics.pmtiles

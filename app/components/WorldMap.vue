@@ -15,15 +15,12 @@ import type {
 import { MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM } from "~~/shared/fumo";
 import { resolveHostedMapStyleUrl } from "~~/shared/mapStyle";
 import {
-  applySouthTibetRegionLabelPolicy,
-  applyTaiwanProvinceLabelPolicy,
-} from "~~/app/composables/useMapPoliticalLabels";
-import {
   BASE_MAP_HEALTH_CHECK_DELAY_MS,
   BASE_MAP_HEALTH_CONFIRM_DELAY_MS,
   BASE_MAP_RECOVERY_MAX_ATTEMPTS,
   BASE_MAP_RECOVERY_RETRY_DELAYS_MS,
   BASE_MAP_SOURCE_NAME,
+  GEOPOLITICS_SOURCE_NAME,
   hasRenderedBaseMapFeatures as hasVisibleBaseMapFeatures,
   isBaseMapErrorEvent,
   isBaseMapSourceLoaded as isSharedBaseMapSourceLoaded,
@@ -153,8 +150,6 @@ const baseMapTileLoadingRequests = ref(0);
 const isMapLoading = computed(
   () => mapLoadingRequests.value > 0 || baseMapTileLoadingRequests.value > 0,
 );
-const southTibetRegionLabel = computed(() => t("map.southTibetRegionLabel"));
-const taiwanProvinceLabel = computed(() => t("map.taiwanProvinceLabel"));
 const viewportWidth = ref(
   import.meta.client ? window.innerWidth : MOBILE_BREAKPOINT + 1,
 );
@@ -766,16 +761,12 @@ const fetchGeoJson = async (signal?: AbortSignal) => {
 
 const fetchInitialMapStyle = async () => {
   const styleUrl = getMapStyleUrl();
-  const options = {
-    southTibetRegionLabel: southTibetRegionLabel.value,
-    taiwanProvinceLabel: taiwanProvinceLabel.value,
-  };
 
   try {
-    return await fetchHostedMapStyle(styleUrl, options);
+    return await fetchHostedMapStyle(styleUrl);
   } catch {
     await new Promise((resolve) => window.setTimeout(resolve, 160));
-    return await fetchHostedMapStyle(styleUrl, options);
+    return await fetchHostedMapStyle(styleUrl);
   }
 };
 
@@ -1972,10 +1963,7 @@ const reloadBaseMapStyle = async () => {
   try {
     await resetBaseMapTileProtocol();
 
-    const style = await fetchHostedMapStyle(getMapStyleUrl(), {
-      southTibetRegionLabel: southTibetRegionLabel.value,
-      taiwanProvinceLabel: taiwanProvinceLabel.value,
-    });
+    const style = await fetchHostedMapStyle(getMapStyleUrl());
 
     if (currentSequence !== mapStyleSequence || !mapRef.value || baseMapReady) {
       return;
@@ -2034,7 +2022,7 @@ const handleBaseMapSourceData = (event: MapSourceDataEvent) => {
   finishBaseMapTileLoading(event);
 
   if (
-    event.sourceId !== BASE_MAP_SOURCE_NAME ||
+    ![BASE_MAP_SOURCE_NAME, GEOPOLITICS_SOURCE_NAME].includes(event.sourceId) ||
     !event.isSourceLoaded ||
     baseMapReady
   ) {
@@ -2104,22 +2092,12 @@ const loadRegionHighlight = async (scope: RegionScope | null) => {
   }
 };
 
-const applyPoliticalLabels = () => {
-  if (!mapRef.value || !mapRef.value.isStyleLoaded()) {
-    return;
-  }
-
-  applyTaiwanProvinceLabelPolicy(mapRef.value, taiwanProvinceLabel.value);
-  applySouthTibetRegionLabelPolicy(mapRef.value, southTibetRegionLabel.value);
-};
-
 const syncMapRuntimeState = () => {
   if (!mapRef.value || !mapRef.value.isStyleLoaded()) {
     return;
   }
 
   scheduleMapResize();
-  applyPoliticalLabels();
   setupMapLayers();
   bindMapInteractions();
   syncRegionHighlightSource();
@@ -2282,10 +2260,7 @@ watch([isDark, locale], async ([dark]) => {
   const currentSequence = ++mapStyleSequence;
   startMapLoading();
   try {
-    const style = await fetchHostedMapStyle(getMapStyleUrl(dark), {
-      southTibetRegionLabel: southTibetRegionLabel.value,
-      taiwanProvinceLabel: taiwanProvinceLabel.value,
-    });
+    const style = await fetchHostedMapStyle(getMapStyleUrl(dark));
 
     if (currentSequence !== mapStyleSequence || !mapRef.value) {
       return;
@@ -2389,7 +2364,6 @@ watch(
 watch(
   () => locale.value,
   () => {
-    applyPoliticalLabels();
     void loadRegionHighlight(props.highlightRegionScope);
     syncSelectionSource();
     syncRegionHighlightSource();

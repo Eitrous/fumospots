@@ -1,6 +1,7 @@
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
 export const BASE_MAP_SOURCE_NAME = 'protomaps'
+export const GEOPOLITICS_SOURCE_NAME = 'geopolitics'
 export const BASE_MAP_HEALTH_CHECK_DELAY_MS = 6400
 export const BASE_MAP_HEALTH_CONFIRM_DELAY_MS = 220
 export const BASE_MAP_RECOVERY_MAX_ATTEMPTS = 3
@@ -9,9 +10,7 @@ export const BASE_MAP_PROBE_LAYER_IDS = [
   'earth',
   'water',
   'landuse_park',
-  'roads_major',
-  'boundaries_country',
-  'places_country'
+  'roads_major'
 ] as const
 
 type BaseMapErrorEvent = {
@@ -53,6 +52,14 @@ export const hasRenderedBaseMapFeatures = (
     return false
   }
 
+  if (!isBaseMapSourceLoaded(map)) {
+    return false
+  }
+
+  if (map.getSource(GEOPOLITICS_SOURCE_NAME) && !isBaseMapSourceLoaded(map, GEOPOLITICS_SOURCE_NAME)) {
+    return false
+  }
+
   const layers = getExistingBaseMapProbeLayers(map)
   if (!layers.length) {
     return false
@@ -71,6 +78,7 @@ export const isBaseMapErrorEvent = (event: unknown) => {
 
   return (
     mapEvent.sourceId === BASE_MAP_SOURCE_NAME
+    || mapEvent.sourceId === GEOPOLITICS_SOURCE_NAME
     || /pmtiles|protomaps|failed to fetch|bad response code|server returned|etag|range/i.test(message)
   )
 }

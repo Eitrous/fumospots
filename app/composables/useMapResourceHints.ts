@@ -19,6 +19,7 @@ export const useMapResourceHints = () => {
   const currentOrigin = requestUrl.origin
   const origins = [
     toAbsoluteOrigin(config.public.pmtilesUrl),
+    toAbsoluteOrigin(config.public.geopoliticsPmtilesUrl),
     toAbsoluteOrigin(config.public.mapStyleUrl),
     toAbsoluteOrigin(config.public.mapDarkStyleUrl)
   ].filter((origin): origin is string => Boolean(origin) && origin !== currentOrigin)

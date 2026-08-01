@@ -1,0 +1,863 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-1",
+        "view": "CN",
+        "label_kind": "county",
+        "rank": 6,
+        "minzoom": 9,
+        "maxzoom": 14,
+        "name_zh_hans": "错那市",
+        "name_en": "错那市",
+        "name_ja": "错那市",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          91.785824338,
+          27.874686285
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-2",
+        "view": "CN",
+        "label_kind": "county",
+        "rank": 6,
+        "minzoom": 9,
+        "maxzoom": 14,
+        "name_zh_hans": "隆子县",
+        "name_en": "隆子县",
+        "name_ja": "隆子县",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          92.460675482,
+          28.410586581
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-3",
+        "view": "CN",
+        "label_kind": "county",
+        "rank": 6,
+        "minzoom": 9,
+        "maxzoom": 14,
+        "name_zh_hans": "墨脱县",
+        "name_en": "墨脱县",
+        "name_ja": "墨脱县",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          95.337955702,
+          29.319313692
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-4",
+        "view": "CN",
+        "label_kind": "county",
+        "rank": 6,
+        "minzoom": 9,
+        "maxzoom": 14,
+        "name_zh_hans": "察隅县",
+        "name_en": "察隅县",
+        "name_ja": "察隅县",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          97.450595266,
+          28.672984471
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-5",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "乌间岭",
+        "name_en": "乌间岭",
+        "name_ja": "乌间岭",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          91.888502814,
+          27.574661217
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-6",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "德让宗",
+        "name_en": "德让宗",
+        "name_ja": "德让宗",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          92.281059211,
+          27.347397833
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-7",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "邦迪拉",
+        "name_en": "邦迪拉",
+        "name_ja": "邦迪拉",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          92.422741337,
+          27.267691223
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-8",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "达旺",
+        "name_en": "达旺",
+        "name_ja": "达旺",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          91.869142054,
+          27.592239967
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-9",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "尼乌木",
+        "name_en": "尼乌木",
+        "name_ja": "尼乌木",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          94.142317599,
+          28.159369495
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-10",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "申隔宗",
+        "name_en": "申隔宗",
+        "name_ja": "申隔宗",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          92.117325518,
+          27.451187864
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-11",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "打陇宗",
+        "name_en": "打陇宗",
+        "name_ja": "打陇宗",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          92.199488422,
+          27.175799117
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-12",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "马加",
+        "name_en": "马加",
+        "name_ja": "马加",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          93.42762241,
+          28.561433759
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-13",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "哥里西娘",
+        "name_en": "哥里西娘",
+        "name_ja": "哥里西娘",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          93.475825016,
+          28.362680458
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-14",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "邦钦",
+        "name_en": "邦钦",
+        "name_ja": "邦钦",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          91.725555556,
+          27.732777778
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-15",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "江卡宗",
+        "name_en": "江卡宗",
+        "name_ja": "江卡宗",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          91.864444444,
+          27.567222222
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-16",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "赤朗错",
+        "name_en": "赤朗错",
+        "name_ja": "赤朗错",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          91.77416667,
+          27.5425
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-17",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "白则林",
+        "name_en": "白则林",
+        "name_ja": "白则林",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          92.14916667,
+          27.05472222
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-18",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "李错",
+        "name_en": "李错",
+        "name_ja": "李错",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          92.22,
+          27.37888889
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-19",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "济罗",
+        "name_en": "济罗",
+        "name_ja": "济罗",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          93.82111111,
+          27.59277778
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-20",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "塔克新",
+        "name_en": "塔克新",
+        "name_ja": "塔克新",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          93.205,
+          28.4325
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-21",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "马果",
+        "name_en": "马果",
+        "name_ja": "马果",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          92.20694444,
+          27.68833333
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-22",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "瓦弄",
+        "name_en": "瓦弄",
+        "name_ja": "瓦弄",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          97.01772532,
+          28.129532575
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-23",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "格刀",
+        "name_en": "格刀",
+        "name_ja": "格刀",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          95.011806475,
+          28.692844276
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-24",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "梅楚卡",
+        "name_en": "梅楚卡",
+        "name_ja": "梅楚卡",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          94.129950422,
+          28.600316039
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-25",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "阿帕龙",
+        "name_en": "阿帕龙",
+        "name_ja": "阿帕龙",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          95.842657493,
+          28.437574874
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-26",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "里戛",
+        "name_en": "里戛",
+        "name_ja": "里戛",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          95.040573475,
+          28.437767836
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-27",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "马尼岗",
+        "name_en": "马尼岗",
+        "name_ja": "马尼岗",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          94.27839442,
+          28.784867601
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-28",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "都登",
+        "name_en": "都登",
+        "name_ja": "都登",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          94.884725323,
+          28.998882876
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-29",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "米培",
+        "name_en": "米培",
+        "name_ja": "米培",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          95.808750816,
+          28.948356411
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-30",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "古里",
+        "name_en": "古里",
+        "name_ja": "古里",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          96.638888889,
+          28.145277778
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-31",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "打坝",
+        "name_en": "打坝",
+        "name_ja": "打坝",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          97.005147988,
+          28.276645037
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-32",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "达东",
+        "name_en": "达东",
+        "name_ja": "达东",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          94.375555556,
+          28.530277778
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-33",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "古玉通",
+        "name_en": "古玉通",
+        "name_ja": "古玉通",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          97.009146349,
+          28.302151255
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-34",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "邦勾",
+        "name_en": "邦勾",
+        "name_ja": "邦勾",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          94.75333333,
+          28.88611111
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-35",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "莫新",
+        "name_en": "莫新",
+        "name_ja": "莫新",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          94.79166667,
+          28.80916667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-36",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "更仁",
+        "name_en": "更仁",
+        "name_ja": "更仁",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          94.97444444,
+          29.13666667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-37",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "仁更",
+        "name_en": "仁更",
+        "name_ja": "仁更",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          95.27194444,
+          28.1425
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-38",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "贝空曲宗",
+        "name_en": "贝空曲宗",
+        "name_ja": "贝空曲宗",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          96.31583333,
+          28.80166667
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-place-39",
+        "view": "CN",
+        "label_kind": "village",
+        "rank": 9,
+        "minzoom": 11,
+        "maxzoom": 14,
+        "name_zh_hans": "达普好工",
+        "name_en": "达普好工",
+        "name_ja": "达普好工",
+        "source_ref": "https://zrzyt.xizang.gov.cn/fw/zyxz/202004/t20200430_139102.html"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          96.61055556,
+          28.32027778
+        ]
+      }
+    }
+  ]
+}

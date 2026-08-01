@@ -1,0 +1,76 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-bhutan-north-connector",
+        "view": "CN",
+        "kind": "international",
+        "disputed": false,
+        "rank": 0,
+        "minzoom": 0,
+        "maxzoom": 12,
+        "left_code": "BTN",
+        "right_code": "CHN",
+        "source_ref": "CN worldview topology connector"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [91.562854, 27.8148476],
+          [91.5655518, 27.8220739],
+          [91.5655518, 27.8512189],
+          [91.6283394780001, 27.852693787000035]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-bhutan-south-connector",
+        "view": "CN",
+        "kind": "international",
+        "disputed": false,
+        "rank": 0,
+        "minzoom": 0,
+        "maxzoom": 12,
+        "left_code": "BTN",
+        "right_code": "IND",
+        "source_ref": "CN worldview topology connector"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [92.03585982200013, 26.85484771800013],
+          [92.1081258, 26.8732184],
+          [92.1150905, 26.8626105],
+          [92.1273169, 26.8554168],
+          [92.141809, 26.8528411]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "cn-south-tibet-official-boundary-join",
+        "view": "CN",
+        "kind": "international",
+        "disputed": false,
+        "rank": 0,
+        "minzoom": 0,
+        "maxzoom": 12,
+        "left_code": "CHN",
+        "right_code": "IND",
+        "source_ref": "CN worldview topology connector"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [94.2444337, 27.5597984],
+          [94.2504361, 27.5620243]
+        ]
+      }
+    }
+  ]
+}
