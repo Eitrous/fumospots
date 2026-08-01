@@ -65,6 +65,47 @@ const SOUTH_TIBET_REGION_ALIASES = new Set([
   '\u963f\u9c81\u7eb3\u67e5\u5c14\u90a6',
   '\u30a2\u30eb\u30ca\u30fc\u30c1\u30e3\u30eb\u30fb\u30d7\u30e9\u30c7\u30fc\u30b7\u30e5\u5dde'
 ])
+// Coordinate-verified resident-point matches from Tibet's 2024 standard-map
+// databases and the Ministry of Civil Affairs' standardized-name batches.
+// Do not add phonetic guesses here.
+const SOUTH_TIBET_STANDARD_PLACE_LABELS: Record<GeocodeLocale, Record<string, string>> = {
+  'zh-CN': {
+    tawang: '\u8fbe\u65fa',
+    '\u8fbe\u65fa': '\u8fbe\u65fa',
+    bomdila: '\u90a6\u8fea\u62c9',
+    '\u90a6\u8fea\u62c9': '\u90a6\u8fea\u62c9',
+    tuting: '\u90fd\u767b',
+    '\u90fd\u767b': '\u90fd\u767b',
+    mipi: '\u7c73\u57f9',
+    '\u7c73\u57f9': '\u7c73\u57f9',
+    gelling: '\u66f4\u4ec1',
+    '\u66f4\u4ec1': '\u66f4\u4ec1'
+  },
+  en: {
+    tawang: 'Tawang',
+    '\u8fbe\u65fa': 'Tawang',
+    bomdila: 'Bomdila',
+    '\u90a6\u8fea\u62c9': 'Bomdila',
+    tuting: 'Duding',
+    '\u90fd\u767b': 'Duding',
+    mipi: 'Migpain',
+    '\u7c73\u57f9': 'Migpain',
+    gelling: 'Gengren',
+    '\u66f4\u4ec1': 'Gengren'
+  },
+  ja: {
+    tawang: '\u8fbe\u65fa',
+    '\u8fbe\u65fa': '\u8fbe\u65fa',
+    bomdila: '\u90a6\u8fea\u62c9',
+    '\u90a6\u8fea\u62c9': '\u90a6\u8fea\u62c9',
+    tuting: '\u90fd\u767b',
+    '\u90fd\u767b': '\u90fd\u767b',
+    mipi: '\u7c73\u57f9',
+    '\u7c73\u57f9': '\u7c73\u57f9',
+    gelling: '\u66f4\u4ec1',
+    '\u66f4\u4ec1': '\u66f4\u4ec1'
+  }
+}
 const TAIWAN_COUNTRY_ALIASES = new Set([
   'taiwan',
   '\u53f0\u6e7e',
@@ -239,6 +280,18 @@ export const getSouthTibetPoliticalLabels = (acceptLanguage = DEFAULT_ACCEPT_LAN
   return SOUTH_TIBET_POLITICAL_LABELS[normalizeGeocodeLocale(acceptLanguage)]
 }
 
+const getSouthTibetStandardPlaceName = (
+  value: string | null | undefined,
+  acceptLanguage: string
+) => {
+  if (!value) {
+    return null
+  }
+
+  const locale = normalizeGeocodeLocale(acceptLanguage)
+  return SOUTH_TIBET_STANDARD_PLACE_LABELS[locale][normalizeLocationValue(value)] || value
+}
+
 const getTaiwanCityName = (address: NominatimAddress) => {
   return (
     address.city ||
@@ -324,7 +377,8 @@ const isSouthTibetAddress = (address: NominatimAddress) => {
 
 const normalizeSouthTibetDisplayName = (
   displayName: string,
-  labels: { countryName: string, regionName: string }
+  labels: { countryName: string, regionName: string },
+  acceptLanguage: string
 ) => {
   const normalizedParts: string[] = []
   const seenParts = new Set<string>()
@@ -332,11 +386,12 @@ const normalizeSouthTibetDisplayName = (
   for (const rawPart of displayName.split(',')) {
     const part = rawPart.trim()
     const normalizedPart = normalizeLocationValue(part)
-    const nextPart = SOUTH_TIBET_REGION_ALIASES.has(normalizedPart)
+    const politicalPart = SOUTH_TIBET_REGION_ALIASES.has(normalizedPart)
       ? labels.regionName
       : INDIA_COUNTRY_ALIASES.has(normalizedPart)
         ? labels.countryName
         : part
+    const nextPart = getSouthTibetStandardPlaceName(politicalPart, acceptLanguage) || politicalPart
     const dedupeKey = normalizeLocationValue(nextPart)
 
     if (!nextPart || seenParts.has(dedupeKey)) {
@@ -403,7 +458,9 @@ export const normalizeLocationScopeForLocale = <T extends LocationScopeFields>(
       ...scope,
       countryName: labels.countryName,
       regionName: labels.regionName,
-      cityName: isSouthTibetRegionValue(cityName) ? null : cityName
+      cityName: isSouthTibetRegionValue(cityName)
+        ? null
+        : getSouthTibetStandardPlaceName(cityName, acceptLanguage)
     }
   }
 
@@ -441,14 +498,17 @@ export const normalizeGeocodeResult = (
   if (isSouthTibetAddress(address)) {
     const labels = getSouthTibetPoliticalLabels(acceptLanguage)
     const rawPlaceName = baseResult.placeName
+    const rawCityName = getCityName(address, getRegionName(address, acceptLanguage))
 
     return {
       ...baseResult,
-      displayName: normalizeSouthTibetDisplayName(baseResult.displayName, labels),
-      placeName: isSouthTibetRegionValue(rawPlaceName) ? labels.regionName : rawPlaceName,
+      displayName: normalizeSouthTibetDisplayName(baseResult.displayName, labels, acceptLanguage),
+      placeName: isSouthTibetRegionValue(rawPlaceName)
+        ? labels.regionName
+        : getSouthTibetStandardPlaceName(rawPlaceName, acceptLanguage) || rawPlaceName,
       countryName: labels.countryName,
       regionName: labels.regionName,
-      cityName: getCityName(address, getRegionName(address, acceptLanguage))
+      cityName: getSouthTibetStandardPlaceName(rawCityName, acceptLanguage)
     }
   }
 
