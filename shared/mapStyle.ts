@@ -3,7 +3,10 @@ import { MAP_DARK_STYLE_URL, MAP_DEFAULT_STYLE_URL } from '~~/shared/fumo'
 export type MapStyleTheme = 'light' | 'dark'
 
 const ABSOLUTE_URL_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:/
-const MAP_STYLE_REVISION = '20260801-6'
+// Style responses are cached independently by theme for one year. Bump this
+// whenever server-side layer policies change so both light and dark themes
+// fetch the same current political-label and boundary rules.
+const MAP_STYLE_REVISION = '20260802-1'
 
 export const isMapStyleTheme = (value: string): value is MapStyleTheme => {
   return value === 'light' || value === 'dark'
