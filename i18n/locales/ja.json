@@ -344,6 +344,7 @@
     "eyebrow": "ユーザーページ",
     "postsTitle": "投稿作品",
     "visibleCount": "{count} 件",
+    "totalLikes": "いいね {count}件",
     "loading": "投稿を読み込み中...",
     "editPost": "投稿を編集",
     "editUsername": "ユーザー名を編集",

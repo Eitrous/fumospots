@@ -344,6 +344,7 @@
     "eyebrow": "User Page",
     "postsTitle": "Posts",
     "visibleCount": "{count} item(s)",
+    "totalLikes": "{count} likes",
     "loading": "Loading posts...",
     "editPost": "Edit post",
     "editUsername": "Edit username",

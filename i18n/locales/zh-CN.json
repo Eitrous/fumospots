@@ -344,6 +344,7 @@
     "eyebrow": "用户主页",
     "postsTitle": "投稿作品",
     "visibleCount": "{count} 条",
+    "totalLikes": "{count} 赞",
     "loading": "正在加载作品...",
     "editPost": "编辑作品",
     "editUsername": "修改用户名",

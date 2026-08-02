@@ -207,6 +207,7 @@ export type PublicUserPage = {
     avatarUrl: string | null
   }
   isSelf: boolean
+  totalLikeCount: number
   posts: UserPostSummary[]
 }
 

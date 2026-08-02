@@ -244,9 +244,22 @@ onMounted(() => {
     <section class="workbench-stack-section workbench-user__posts">
       <div class="workbench-stack-section__head workbench-user__posts-head">
         <strong>{{ t('user.postsTitle') }}</strong>
-        <span v-if="userPage" class="status-inline">
-          {{ t('user.visibleCount', { count: userPage.posts.length }) }}
-        </span>
+        <div v-if="userPage" class="workbench-user__posts-stats">
+          <span class="status-inline">
+            {{ t('user.visibleCount', { count: userPage.posts.length }) }}
+          </span>
+          <span class="workbench-user__total-likes">
+            <svg xmlns="http://www.w3.org/2000/svg" width="1.4em" height="1.4em" viewBox="0 0 640 640">
+              <path d="M0 0h640v640H0z" fill="none" />
+              <path fill="currentColor" d="m305 151.1l15 20.7l15-20.7C360 116.5 400.2 96 442.9 96C516.4 96 576 155.6 576 229.1v2.6c0 112.2-139.9 242.5-212.9 298.2c-12.4 9.4-27.6 14.1-43.1 14.1s-30.8-4.6-43.1-14.1C203.9 474.2 64 343.9 64 231.7v-2.6C64 155.6 123.6 96 197.1 96c42.7 0 82.9 20.5 107.9 55.1" />
+            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 640 640">
+              <path d="M0 0h640v640H0z" fill="none" />
+              <path fill="currentColor" d="M183.1 137.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L275.2 320L137.9 457.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l137.3-137.4l137.4 137.3c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L365.8 320l137.3-137.4c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L320.5 274.7z" />
+            </svg>
+            <span>{{ userPage.totalLikeCount }}</span>
+          </span>
+        </div>
       </div>
 
       <p v-if="loading" class="support-copy">{{ t('user.loading') }}</p>
@@ -337,6 +350,33 @@ onMounted(() => {
   width: 2.3rem;
   height: 2.3rem;
   border-radius: 0.65rem;
+}
+
+.workbench-user__posts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workbench-user__posts-stats {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-left: auto;
+  text-align: right;
+}
+
+.workbench-user__total-likes {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.1rem;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 @media (max-width: 720px) {
