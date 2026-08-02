@@ -3601,9 +3601,8 @@ html[data-theme="dark"] .photo-strip__button {
 .workbench-detail-lines {
   display: grid;
   gap: 0.85rem;
-  padding: 1rem 0;
+  padding-top: 1rem;
   border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
 }
 
 html[data-theme="dark"] .workbench-detail-lines {
@@ -3643,6 +3642,42 @@ html[data-theme="dark"] .workbench-detail-lines {
 .workbench-detail-section {
   padding-top: 1rem;
   border-top: 1px solid var(--border);
+}
+
+.workbench-detail-character-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.workbench-detail-character-tag {
+  display: inline-flex;
+  min-height: 1.9rem;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.65rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.workbench-detail-character-tag:hover,
+.workbench-detail-character-tag:focus-visible,
+.workbench-detail-character-tag.is-active {
+  color: var(--accent);
+}
+
+.workbench-detail-character-tag svg {
+  color: var(--accent);
+}
+
+.workbench-detail-character-tag__name {
+  border-bottom: 1px solid var(--accent);
 }
 
 .workbench-detail-grid > .field-grid {

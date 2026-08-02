@@ -105,7 +105,6 @@
     "searchPlaceholder": "Type a character name",
     "noResults": "No matching characters.",
     "catalogEmpty": "The character catalog is unavailable.",
-    "limitReached": "Choose up to {max} characters",
     "remove": "Remove {name}",
     "note": "Only points with the added character tag will be shown."
   },
@@ -224,6 +223,8 @@
     "loadingDescription": "The right panel will show the full image, public location, and the author's note.",
     "authorNote": "Author note",
     "authorNoteFallback": "The author did not leave an extra note.",
+    "characters": "Characters",
+    "filterByCharacter": "Show posts featuring {name} on the map",
     "locationInfo": "Location",
     "locationDetailFallback": "No more detailed region information was provided.",
     "publicCoordinates": "Public coordinates: {value}",

@@ -8,6 +8,7 @@ import {
   normalizeLocationScopeForLocale
 } from '~~/server/utils/geocode'
 import { getOrderedPhotoRows, signPhotoRows, type PhotoRow } from '~~/server/utils/posts'
+import { mapCharacterRelations } from '~~/server/utils/characters'
 
 export default defineEventHandler(async (event): Promise<PublicPostDetail> => {
   const id = Number(event.context.params?.id)
@@ -78,6 +79,21 @@ export default defineEventHandler(async (event): Promise<PublicPostDetail> => {
     .eq('post_id', id)
     .maybeSingle()
 
+  const charactersPromise = supabase
+    .from('post_characters')
+    .select(`
+      character_id,
+      characters (
+        id,
+        slug,
+        name_en,
+        name_zh,
+        name_ja
+      )
+    `)
+    .eq('post_id', id)
+    .order('character_id', { ascending: true })
+
   const viewerLikePromise = auth
     ? createPublicServerClient(event, auth.accessToken)
       .from('post_likes')
@@ -91,12 +107,14 @@ export default defineEventHandler(async (event): Promise<PublicPostDetail> => {
     photos,
     { data: profile, error: profileError },
     { data: likeCount, error: likeCountError },
-    { data: viewerLikes, error: viewerLikeError }
+    { data: viewerLikes, error: viewerLikeError },
+    { data: characterRelations, error: charactersError }
   ] = await Promise.all([
     signedPhotosPromise,
     profilePromise,
     likeCountPromise,
-    viewerLikePromise
+    viewerLikePromise,
+    charactersPromise
   ])
 
   if (profileError) {
@@ -130,6 +148,13 @@ export default defineEventHandler(async (event): Promise<PublicPostDetail> => {
     })
   }
 
+  if (charactersError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: charactersError.message
+    })
+  }
+
   const likedByViewer = Boolean(viewerLikes?.length)
 
   return {
@@ -154,6 +179,7 @@ export default defineEventHandler(async (event): Promise<PublicPostDetail> => {
     privacyMode: data.privacy_mode,
     capturedAt: data.captured_at,
     createdAt: data.created_at,
+    characters: mapCharacterRelations(characterRelations),
     author: {
       username: profile?.username ?? 'unknown',
       avatarUrl: profile?.avatar_url ?? null
