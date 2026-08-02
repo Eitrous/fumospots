@@ -8,6 +8,7 @@ import {
   postPayloadToRow
 } from '~~/server/utils/posts'
 import { ensureStoragePathsWebp, rewritePhotoPathsWithMap } from '~~/server/utils/imageWebp'
+import { assertCharacterIdsExist, characterIdsToRows } from '~~/server/utils/characters'
 
 export default defineEventHandler(async (event) => {
   const id = Number(getRouterParam(event, 'id'))
@@ -26,6 +27,8 @@ export default defineEventHandler(async (event) => {
   await enforceRateLimit(event, 'submitUser', user.id)
 
   const payload = normalizePostPayload(body, user.id)
+  const supabase = createPublicServerClient(event, accessToken)
+  await assertCharacterIdsExist(supabase, payload.characterIds)
   const conversionResult = await ensureStoragePathsWebp(
     event,
     payload.photos.flatMap((photo) => [photo.imagePath, photo.thumbPath]),
@@ -39,7 +42,6 @@ export default defineEventHandler(async (event) => {
     ...payload,
     photos: rewritePhotoPathsWithMap(payload.photos, conversionResult.pathMap)
   }
-  const supabase = createPublicServerClient(event, accessToken)
   const { data: post, error: postError } = await supabase
     .from('posts')
     .select('id, user_id, status')
@@ -134,6 +136,36 @@ export default defineEventHandler(async (event) => {
       })
     }
 
+    const { error: deleteCharactersError } = await supabase
+      .from('post_revision_characters')
+      .delete()
+      .eq('revision_id', revisionId)
+
+    if (deleteCharactersError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: deleteCharactersError.message
+      })
+    }
+
+    const { error: charactersError } = await supabase
+      .from('post_revision_characters')
+      .insert(characterIdsToRows(webpPayload.characterIds, 'revision_id', revisionId))
+
+    if (charactersError) {
+      if (!existingRevision) {
+        await supabase
+          .from('post_revisions')
+          .delete()
+          .eq('id', revisionId)
+      }
+
+      throw createError({
+        statusCode: 500,
+        statusMessage: charactersError.message || 'Failed to save revision characters.'
+      })
+    }
+
     return {
       id,
       revisionId,
@@ -182,6 +214,29 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 500,
       statusMessage: photosError.message || 'Failed to save post photos.'
+    })
+  }
+
+  const { error: deleteCharactersError } = await supabase
+    .from('post_characters')
+    .delete()
+    .eq('post_id', id)
+
+  if (deleteCharactersError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: deleteCharactersError.message
+    })
+  }
+
+  const { error: charactersError } = await supabase
+    .from('post_characters')
+    .insert(characterIdsToRows(webpPayload.characterIds, 'post_id', id))
+
+  if (charactersError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: charactersError.message || 'Failed to save post characters.'
     })
   }
 

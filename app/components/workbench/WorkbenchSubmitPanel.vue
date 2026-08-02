@@ -84,6 +84,12 @@ const auth = useAuthState()
 const { t, locale } = useI18n()
 const { invalidatePostDetail } = usePostDetailCache()
 const { invalidateUserPage } = useUserPageCache()
+const {
+  characters,
+  loading: charactersLoading,
+  error: charactersError,
+  loadCharacters
+} = useCharacterCatalog()
 
 const isEditMode = computed(() => props.mode === 'edit')
 const selectedPhotos = ref<SelectedPhoto[]>([])
@@ -105,6 +111,7 @@ const longitudeInput = ref('')
 const coordinateInputError = ref('')
 const coordinateInputsRef = ref<HTMLElement | null>(null)
 const capturedAt = ref('')
+const selectedCharacterIds = ref<number[]>([])
 
 const searchQuery = ref('')
 const searchResults = ref<GeocodeResult[]>([])
@@ -165,6 +172,7 @@ const resetForm = () => {
   exactLocation.value = null
   publicLocation.value = null
   capturedAt.value = ''
+  selectedCharacterIds.value = []
   searchQuery.value = ''
   searchResults.value = []
   revokePreviewUrls()
@@ -236,6 +244,7 @@ const applyEditablePost = (detail: EditablePostDetail) => {
   exactLocation.value = detail.exactLocation
   publicLocation.value = detail.exactLocation
   capturedAt.value = detail.capturedAt ? toDateTimeLocalValue(new Date(detail.capturedAt)) : ''
+  selectedCharacterIds.value = detail.characterIds
   searchQuery.value = ''
   searchResults.value = []
   revokePreviewUrls()
@@ -748,6 +757,7 @@ const canSubmit = computed(() => {
   return Boolean(
     selectedPhotos.value.length
     && title.value.trim()
+    && selectedCharacterIds.value.length
     && exactLocation.value
     && publicLocation.value
     && !coordinateInputError.value
@@ -990,6 +1000,11 @@ const submitPost = async () => {
     return
   }
 
+  if (!selectedCharacterIds.value.length) {
+    errorMessage.value = t('submit.errors.characterRequired')
+    return
+  }
+
   if (!applyCoordinateInputs()) {
     return
   }
@@ -1062,7 +1077,8 @@ const submitPost = async () => {
       placeName: placeName.value.trim(),
       countryName: countryName.value,
       regionName: regionName.value,
-      cityName: cityName.value
+      cityName: cityName.value,
+      characterIds: selectedCharacterIds.value
     }
 
     await $fetch(isEditMode.value && props.postId ? `/api/posts/${props.postId}/edit` : '/api/posts', {
@@ -1205,6 +1221,12 @@ useWorkbenchToolbarAction(computed(() => ({
   disabled: !canSubmit.value,
   loading: uploading.value
 })))
+
+onMounted(() => {
+  void loadCharacters().catch(() => {
+    // The inline retry state remains available if the catalog request fails.
+  })
+})
 
 onBeforeUnmount(() => {
   revokePreviewUrls()
@@ -1361,6 +1383,28 @@ onBeforeUnmount(() => {
           <span>{{ t('submit.capturedAtLabel') }}</span>
           <input v-model="capturedAt" class="field-input" type="datetime-local">
         </label>
+
+        <div class="field-label character-picker-field">
+          <span>{{ t('submit.charactersLabel') }}</span>
+          <CharacterTagPicker
+            v-model="selectedCharacterIds"
+            :characters="characters"
+            :disabled="uploading || loadingEditable || charactersLoading"
+            :display-icon="true"
+            :borderless="false"
+            :display-counter="true"
+          />
+          <!-- <small class="field-hint">{{ t('submit.charactersHint') }}</small> -->
+          <span v-if="charactersLoading" class="status-inline">{{ t('characters.loading') }}</span>
+          <button
+            v-else-if="charactersError"
+            class="submit-character-retry"
+            type="button"
+            @click="loadCharacters(true)"
+          >
+            {{ t('characters.loadFailed') }}
+          </button>
+        </div>
       </div>
     </section>
 
@@ -1648,7 +1692,7 @@ onBeforeUnmount(() => {
 .submit-search-row__button {
   width: 3.1rem;
   min-height: 3.25rem;
-  border-radius: 18px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
 }
@@ -1687,6 +1731,18 @@ onBeforeUnmount(() => {
 .submit-location-field-skeleton {
   width: min(100%, 5.5rem);
   height: 0.9rem;
+}
+
+.submit-character-retry {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.82rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 .field-grid--three > .field-label:nth-child(2) .submit-location-field-skeleton {

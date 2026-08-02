@@ -6,6 +6,7 @@ import {
   type PhotoRow
 } from '~~/server/utils/posts'
 import { deleteStorageObjects } from '~~/server/utils/storage'
+import { characterIdsToRows, getCharacterIdsFromRelations } from '~~/server/utils/characters'
 
 export default defineEventHandler(async (event) => {
   const { user } = await requireAdminUser(event)
@@ -45,6 +46,9 @@ export default defineEventHandler(async (event) => {
         image_path,
         thumb_path,
         sort_order
+      ),
+      post_revision_characters (
+        character_id
       )
     `)
     .eq('id', id)
@@ -81,6 +85,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const revisionPhotos = getOrderedPhotoRows(revision.post_revision_photos as PhotoRow[], revision)
+  const revisionCharacterIds = getCharacterIdsFromRelations(revision.post_revision_characters)
   const currentPhotos = getOrderedPhotoRows(currentPost.post_photos as PhotoRow[], currentPost)
 
   if (!revisionPhotos.length) {
@@ -149,6 +154,31 @@ export default defineEventHandler(async (event) => {
       statusCode: 500,
       statusMessage: insertPhotosError.message
     })
+  }
+
+  if (revisionCharacterIds.length) {
+    const { error: deleteCharactersError } = await supabase
+      .from('post_characters')
+      .delete()
+      .eq('post_id', revision.post_id)
+
+    if (deleteCharactersError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: deleteCharactersError.message
+      })
+    }
+
+    const { error: insertCharactersError } = await supabase
+      .from('post_characters')
+      .insert(characterIdsToRows(revisionCharacterIds, 'post_id', revision.post_id))
+
+    if (insertCharactersError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: insertCharactersError.message
+      })
+    }
   }
 
   const { error: updateRevisionError } = await supabase

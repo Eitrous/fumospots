@@ -10,6 +10,7 @@ import {
   signEditablePhotoRows,
   type PhotoRow
 } from '~~/server/utils/posts'
+import { getCharacterIdsFromRelations } from '~~/server/utils/characters'
 
 const toEditableDetail = async (
   event: H3Event,
@@ -45,7 +46,10 @@ const toEditableDetail = async (
     placeName: source.place_name || '',
     countryName: locationScope.countryName,
     regionName: locationScope.regionName,
-    cityName: locationScope.cityName
+    cityName: locationScope.cityName,
+    characterIds: getCharacterIdsFromRelations(
+      source.post_revision_characters || source.post_characters
+    )
   }
 }
 
@@ -85,6 +89,9 @@ export default defineEventHandler(async (event): Promise<EditablePostDetail> => 
         image_path,
         thumb_path,
         sort_order
+      ),
+      post_characters (
+        character_id
       )
     `)
     .eq('id', id)
@@ -122,6 +129,9 @@ export default defineEventHandler(async (event): Promise<EditablePostDetail> => 
         image_path,
         thumb_path,
         sort_order
+      ),
+      post_revision_characters (
+        character_id
       )
     `)
     .eq('post_id', id)

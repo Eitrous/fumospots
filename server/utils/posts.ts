@@ -10,6 +10,7 @@ import {
   isOwnedPhotoThumbStoragePath
 } from '~~/server/utils/storagePath'
 import { signStorageObjects } from '~~/server/utils/supabase'
+import { normalizeCharacterIds } from '~~/server/utils/characters'
 
 export type PhotoRow = {
   image_path: string
@@ -29,6 +30,7 @@ export type NormalizedPostPayload = {
   countryName: string | null
   regionName: string | null
   cityName: string | null
+  characterIds: number[]
 }
 
 const isValidLatLng = (value: unknown) => {
@@ -52,6 +54,7 @@ export const normalizePostPayload = (
   const title = body.title?.trim()
   const normalizedBody = body.body?.trim() || null
   const photos = Array.isArray(body.photos) ? body.photos : []
+  const characterIds = normalizeCharacterIds(body.characterIds)
 
   if (!title || title.length > MAX_TITLE_LENGTH) {
     throw createError({
@@ -135,12 +138,20 @@ export const normalizePostPayload = (
     placeName: body.placeName?.trim() || null,
     countryName: body.countryName || null,
     regionName: body.regionName || null,
-    cityName: body.cityName || null
+    cityName: body.cityName || null,
+    characterIds
   }
 }
 
 export const postPayloadToRow = (payload: NormalizedPostPayload) => {
   const coverPhoto = payload.photos[0]
+
+  if (!coverPhoto) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'At least one photo is required.'
+    })
+  }
 
   return {
     title: payload.title,

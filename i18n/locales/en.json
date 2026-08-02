@@ -98,6 +98,17 @@
       "loadFailed": "Failed to load all posts."
     }
   },
+  "characters": {
+    "loading": "Loading character catalog…",
+    "loadFailed": "Failed to load characters. Click to retry",
+    "searchLabel": "Search characters",
+    "searchPlaceholder": "Type a character name",
+    "noResults": "No matching characters.",
+    "catalogEmpty": "The character catalog is unavailable.",
+    "limitReached": "Choose up to {max} characters",
+    "remove": "Remove {name}",
+    "note": "Only points with the added character tag will be shown."
+  },
   "map": {
     "loading": "Opening the map…",
     "loadFallbackHint": "If you can see this,\nthe map has not loaded yet.\nPlease try refreshing.",
@@ -110,7 +121,13 @@
     "previewEmpty": "No post previews are available here yet.",
     "previewLoadFailed": "Failed to load post previews.",
     "previewListLabel": "Nearby post list",
-    "untitledPost": "Untitled post"
+    "untitledPost": "Untitled post",
+    "characterFilterButton": "Filter map posts by character",
+    "characterFilterTitle": "Filter characters",
+    "characterFilterHint": "Multiple selections show posts containing any selected character.",
+    "characterFilterClear": "Clear",
+    "characterFilterActive": "{names} · {count} point(s) shown",
+    "characterFilterInactive": "No filter · {count} point(s) shown"
   },
   "auth": {
     "eyebrow": "",
@@ -251,6 +268,8 @@
     "bodyLabel": "Author note",
     "bodyPlaceholder": "Write a short note about where the photo was taken or what happened during this fumo trip.",
     "capturedAtLabel": "Capture time",
+    "charactersLabel": "Characters in the photos",
+    "charactersHint": "Select every character visible in the photos. Multiple selections are supported.",
     "privacyApprox": "Public approximate location",
     "privacyExact": "Public exact coordinates",
     "locationSectionTitle": "Mark location",
@@ -288,6 +307,7 @@
       "invalidPhotoType": "Only WebP, JPEG, PNG, AVIF, or GIF photos can be uploaded.",
       "photoTooLarge": "Each uploaded file must be {max} or smaller.",
       "titleRequired": "Please enter a title.",
+      "characterRequired": "Please select at least one character visible in the photos.",
       "coordinatePairRequired": "Enter both latitude and longitude.",
       "latitudeInvalid": "Latitude must be a number between -90 and 90.",
       "longitudeInvalid": "Longitude must be a number between -180 and 180.",

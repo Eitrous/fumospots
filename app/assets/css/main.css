@@ -2180,6 +2180,7 @@ html[data-theme="dark"] .workbench-icon-button--primary:focus-visible {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overflow-anchor: none;
   padding-inline: var(--workbench-sidebar-inline-pad);
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -2552,7 +2553,7 @@ html[data-theme="dark"] .workbench-poster__closing {
 
 .workbench-sidebar .field-input,
 .workbench-sidebar .field-textarea {
-  border-radius: 18px;
+  border-radius: 8px;
   border-color: var(--border);
   background: var(--bg);
   box-shadow: none;
@@ -3749,7 +3750,7 @@ html[data-theme="dark"] .search-results li:first-child .search-results__item {
   min-width: 9rem;
   padding: 0.35rem;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 8px;
   background: var(--bg);
   box-shadow: none;
 }
@@ -4162,8 +4163,11 @@ html[data-theme="dark"] .user-menu__submenu-head {
 }
 
 .site-root :where(a, button, input, textarea, select, [tabindex]):focus-visible {
-  outline: 2px solid var(--accent) !important;
-  outline-offset: 2px;
+  outline: 1px solid var(--accent) !important;
+}
+
+.character-picker__search input:focus-visible {
+  outline: none !important;
 }
 
 /* Admin UI refresh */

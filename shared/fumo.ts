@@ -6,6 +6,18 @@ export type UserRole = 'user' | 'admin'
 export type WorkbenchPanel = 'info' | 'post' | 'login' | 'onboarding' | 'submit' | 'edit' | 'user' | 'region' | 'posts'
 export type RegionSort = 'created' | 'captured'
 
+export type CharacterCatalogItem = {
+  id: number
+  slug: string
+  nameEn: string
+  nameZh: string | null
+  nameJa: string | null
+}
+
+export type CharacterCatalogResponse = {
+  items: CharacterCatalogItem[]
+}
+
 export type LatLng = {
   lat: number
   lng: number
@@ -146,6 +158,7 @@ export type AdminReviewPost = {
   capturedAt: string | null
   createdAt: string | null
   reviewNote: string | null
+  characters: CharacterCatalogItem[]
   author: {
     id: string
     username: string
@@ -153,7 +166,7 @@ export type AdminReviewPost = {
   }
 }
 
-export type AdminLocationBackfillItem = {
+export type AdminCharacterBackfillItem = {
   id: number
   title: string
   body: string | null
@@ -161,9 +174,6 @@ export type AdminLocationBackfillItem = {
   thumbUrl: string | null
   photos: PostPhotoAsset[]
   placeName: string | null
-  countryName: string | null
-  regionName: string | null
-  cityName: string | null
   exactLocation: LatLng | null
   publicLocation: LatLng | null
   privacyMode: PrivacyMode
@@ -260,6 +270,7 @@ export type SubmitPostPayload = {
   countryName: string | null
   regionName: string | null
   cityName: string | null
+  characterIds: number[]
 }
 
 export type EditPostPayload = SubmitPostPayload
@@ -316,6 +327,24 @@ export const MAX_TITLE_LENGTH = 80
 export const MAX_BODY_LENGTH = 1000
 export const MAX_SUGGESTION_LENGTH = 2000
 export const MAX_POST_PHOTOS = 10
+export const MAX_POST_CHARACTERS = 20
 export const MAX_PHOTO_UPLOAD_BYTES = 25 * 1024 * 1024
 export const MIN_PASSWORD_LENGTH = 8
 export const USERNAME_PATTERN = /^[a-zA-Z0-9_-]{3,24}$/
+
+export const getCharacterDisplayName = (
+  character: CharacterCatalogItem,
+  locale: string
+) => {
+  const normalizedLocale = locale.toLowerCase()
+
+  if (normalizedLocale.startsWith('zh') && character.nameZh) {
+    return character.nameZh
+  }
+
+  if (normalizedLocale.startsWith('ja') && character.nameJa) {
+    return character.nameJa
+  }
+
+  return character.nameEn
+}

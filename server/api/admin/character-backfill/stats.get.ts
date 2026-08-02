@@ -3,15 +3,12 @@ import { createAdminServerClient, requireAdminUser } from '~~/server/utils/supab
 export default defineEventHandler(async (event) => {
   await requireAdminUser(event)
   const supabase = createAdminServerClient(event)
-
   const { count, error } = await supabase
-    .from('posts')
-    .select('id, post_revisions!left(id)', {
+    .from('admin_character_backfill_posts')
+    .select('id', {
       count: 'exact',
       head: true
     })
-    .eq('status', 'approved')
-    .is('post_revisions.id', null)
 
   if (error) {
     throw createError({

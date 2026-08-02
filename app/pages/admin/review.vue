@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { AdminLocationBackfillItem, AdminReviewPost } from '~~/shared/fumo'
+import type { AdminCharacterBackfillItem, AdminReviewPost } from '~~/shared/fumo'
+import { getCharacterDisplayName } from '~~/shared/fumo'
 import { normalizeApiErrorMessage } from '~~/app/composables/normalizeApiErrorMessage'
 
 definePageMeta({
@@ -7,26 +8,32 @@ definePageMeta({
   middleware: ['require-admin']
 })
 
-type LocationBackfillStatsResponse = {
+type CharacterBackfillStatsResponse = {
   totals: {
     eligiblePosts: number
   }
 }
 
-type LocationBackfillItemsResponse = {
-  items: AdminLocationBackfillItem[]
+type CharacterBackfillItemsResponse = {
+  items: AdminCharacterBackfillItem[]
   nextCursor: number | null
   hasMore: boolean
 }
 
-const LOCATION_BACKFILL_PAGE_SIZE = 50
-const LOCATION_BACKFILL_TOP_UP_THRESHOLD = 10
+const CHARACTER_BACKFILL_PAGE_SIZE = 50
+const CHARACTER_BACKFILL_TOP_UP_THRESHOLD = 10
 
 const auth = useAuthState()
 const { formatDateTime, formatLatLng, privacyModeLabel } = useFormatters({ locale: 'zh-CN' })
 const { invalidatePostDetail } = usePostDetailCache()
 const { invalidateUserPage } = useUserPageCache()
 const { invalidateRegionPages } = useRegionPageCache()
+const {
+  characters,
+  loading: charactersLoading,
+  error: charactersError,
+  loadCharacters
+} = useCharacterCatalog()
 
 const posts = ref<AdminReviewPost[]>([])
 const selectedKey = ref<string | null>(null)
@@ -37,21 +44,19 @@ const submitting = ref(false)
 const feedbackMessage = ref('')
 const errorMessage = useErrorNoticeState()
 
-const locationBackfillStats = ref<LocationBackfillStatsResponse | null>(null)
-const locationBackfillStatsLoading = ref(false)
-const locationBackfillItems = ref<AdminLocationBackfillItem[]>([])
-const locationBackfillLoading = ref(false)
-const locationBackfillLoadingMore = ref(false)
-const locationBackfillSaving = ref(false)
-const locationBackfillErrorMessage = useErrorNoticeState()
-const locationBackfillFeedbackMessage = ref('')
-const locationBackfillNextCursor = ref<number | null>(null)
-const locationBackfillHasMore = ref(false)
+const characterBackfillStats = ref<CharacterBackfillStatsResponse | null>(null)
+const characterBackfillStatsLoading = ref(false)
+const characterBackfillItems = ref<AdminCharacterBackfillItem[]>([])
+const characterBackfillLoading = ref(false)
+const characterBackfillLoadingMore = ref(false)
+const characterBackfillSaving = ref(false)
+const characterBackfillErrorMessage = useErrorNoticeState()
+const characterBackfillFeedbackMessage = ref('')
+const characterBackfillNextCursor = ref<number | null>(null)
+const characterBackfillHasMore = ref(false)
 const selectedBackfillId = ref<number | null>(null)
 const selectedBackfillPhotoIndex = ref(0)
-const backfillCountryName = ref('')
-const backfillRegionName = ref('')
-const backfillCityName = ref('')
+const backfillCharacterIds = ref<number[]>([])
 
 const getAuthHeadersOrThrow = () => {
   const headers = auth.authHeaders.value
@@ -62,16 +67,8 @@ const getAuthHeadersOrThrow = () => {
   return headers
 }
 
-const formatScopeLabel = (
-  countryName: string | null | undefined,
-  regionName: string | null | undefined,
-  cityName: string | null | undefined
-) => {
-  const parts = [countryName, regionName, cityName]
-    .map(part => part?.trim())
-    .filter((part): part is string => Boolean(part))
-
-  return parts.length ? parts.join(' / ') : '未填写地区字段'
+const characterName = (character: AdminReviewPost['characters'][number]) => {
+  return getCharacterDisplayName(character, 'zh-CN')
 }
 
 const selectedPost = computed(() => {
@@ -104,7 +101,7 @@ const selectedReviewTypeLabel = computed(() => {
 })
 
 const selectedBackfillItem = computed(() => {
-  return locationBackfillItems.value.find(item => item.id === selectedBackfillId.value) || null
+  return characterBackfillItems.value.find(item => item.id === selectedBackfillId.value) || null
 })
 
 const selectedBackfillPhotos = computed(() => {
@@ -129,9 +126,10 @@ const selectedBackfillPhoto = computed(() => {
 })
 
 const backfillSaveDisabled = computed(() => {
-  return locationBackfillSaving.value
+  return characterBackfillSaving.value
+    || charactersLoading.value
     || !selectedBackfillItem.value
-    || !backfillRegionName.value.trim()
+    || !backfillCharacterIds.value.length
 })
 
 watch(selectedPost, (post) => {
@@ -139,11 +137,9 @@ watch(selectedPost, (post) => {
   selectedPhotoIndex.value = 0
 }, { immediate: true })
 
-watch(selectedBackfillItem, (item) => {
+watch(selectedBackfillItem, () => {
   selectedBackfillPhotoIndex.value = 0
-  backfillCountryName.value = item?.countryName || ''
-  backfillRegionName.value = item?.regionName || ''
-  backfillCityName.value = item?.cityName || ''
+  backfillCharacterIds.value = []
 }, { immediate: true })
 
 const selectPhoto = (index: number) => {
@@ -176,29 +172,29 @@ const loadPosts = async () => {
   }
 }
 
-const loadLocationBackfillStats = async (options: { preserveErrorMessage?: boolean } = {}) => {
+const loadCharacterBackfillStats = async (options: { preserveErrorMessage?: boolean } = {}) => {
   if (!auth.authHeaders.value.Authorization) {
     return
   }
 
-  locationBackfillStatsLoading.value = true
+  characterBackfillStatsLoading.value = true
 
   try {
-    locationBackfillStats.value = await $fetch<LocationBackfillStatsResponse>('/api/admin/location-backfill/stats', {
+    characterBackfillStats.value = await $fetch<CharacterBackfillStatsResponse>('/api/admin/character-backfill/stats', {
       headers: getAuthHeadersOrThrow()
     })
 
     if (!options.preserveErrorMessage) {
-      locationBackfillErrorMessage.value = ''
+      characterBackfillErrorMessage.value = ''
     }
   } catch (error) {
-    locationBackfillErrorMessage.value = normalizeApiErrorMessage(error, '地区字段队列统计加载失败。')
+    characterBackfillErrorMessage.value = normalizeApiErrorMessage(error, '角色回填队列统计加载失败。')
   } finally {
-    locationBackfillStatsLoading.value = false
+    characterBackfillStatsLoading.value = false
   }
 }
 
-const loadLocationBackfillItems = async (options: {
+const loadCharacterBackfillItems = async (options: {
   append?: boolean
   preserveErrorMessage?: boolean
 } = {}) => {
@@ -209,126 +205,119 @@ const loadLocationBackfillItems = async (options: {
   const append = options.append === true
 
   if (append) {
-    if (locationBackfillLoadingMore.value || !locationBackfillHasMore.value) {
+    if (characterBackfillLoadingMore.value || !characterBackfillHasMore.value) {
       return
     }
-
-    locationBackfillLoadingMore.value = true
+    characterBackfillLoadingMore.value = true
   } else {
-    if (locationBackfillLoading.value) {
+    if (characterBackfillLoading.value) {
       return
     }
-
-    locationBackfillLoading.value = true
+    characterBackfillLoading.value = true
   }
 
   try {
-    const response = await $fetch<LocationBackfillItemsResponse>('/api/admin/location-backfill/items', {
+    const response = await $fetch<CharacterBackfillItemsResponse>('/api/admin/character-backfill/items', {
       headers: getAuthHeadersOrThrow(),
       query: {
-        limit: LOCATION_BACKFILL_PAGE_SIZE,
-        afterId: append ? locationBackfillNextCursor.value ?? undefined : undefined
+        limit: CHARACTER_BACKFILL_PAGE_SIZE,
+        afterId: append ? characterBackfillNextCursor.value ?? undefined : undefined
       }
     })
 
     const mergedItems = append
-      ? [...locationBackfillItems.value, ...response.items.filter(item => !locationBackfillItems.value.some(existing => existing.id === item.id))]
+      ? [...characterBackfillItems.value, ...response.items.filter(item => !characterBackfillItems.value.some(existing => existing.id === item.id))]
       : response.items
 
-    locationBackfillItems.value = mergedItems
-    locationBackfillNextCursor.value = response.nextCursor
-    locationBackfillHasMore.value = response.hasMore
+    characterBackfillItems.value = mergedItems
+    characterBackfillNextCursor.value = response.nextCursor
+    characterBackfillHasMore.value = response.hasMore
 
     if (!selectedBackfillId.value || !mergedItems.some(item => item.id === selectedBackfillId.value)) {
       selectedBackfillId.value = mergedItems[0]?.id ?? null
     }
 
     if (!options.preserveErrorMessage) {
-      locationBackfillErrorMessage.value = ''
+      characterBackfillErrorMessage.value = ''
     }
   } catch (error) {
-    locationBackfillErrorMessage.value = normalizeApiErrorMessage(error, '地区字段队列加载失败。')
+    characterBackfillErrorMessage.value = normalizeApiErrorMessage(error, '角色回填队列加载失败。')
   } finally {
     if (append) {
-      locationBackfillLoadingMore.value = false
+      characterBackfillLoadingMore.value = false
     } else {
-      locationBackfillLoading.value = false
+      characterBackfillLoading.value = false
     }
   }
 }
 
-const refreshLocationBackfillQueue = async () => {
-  locationBackfillFeedbackMessage.value = ''
+const refreshCharacterBackfillQueue = async () => {
+  characterBackfillFeedbackMessage.value = ''
   await Promise.all([
-    loadLocationBackfillStats(),
-    loadLocationBackfillItems()
+    loadCharacterBackfillStats(),
+    loadCharacterBackfillItems(),
+    loadCharacters(true)
   ])
 }
 
-const removeLocationBackfillItem = (id: number) => {
-  const index = locationBackfillItems.value.findIndex(item => item.id === id)
+const removeCharacterBackfillItem = (id: number) => {
+  const index = characterBackfillItems.value.findIndex(item => item.id === id)
   if (index < 0) {
     return
   }
 
-  const nextItems = locationBackfillItems.value.filter(item => item.id !== id)
+  const nextItems = characterBackfillItems.value.filter(item => item.id !== id)
   const nextSelectedId = nextItems[index]?.id ?? nextItems[index - 1]?.id ?? null
+  characterBackfillItems.value = nextItems
 
-  locationBackfillItems.value = nextItems
   if (selectedBackfillId.value === id) {
     selectedBackfillId.value = nextSelectedId
   }
 }
 
-const maybeTopUpLocationBackfillItems = async () => {
-  if (locationBackfillItems.value.length >= LOCATION_BACKFILL_TOP_UP_THRESHOLD || !locationBackfillHasMore.value) {
+const maybeTopUpCharacterBackfillItems = async () => {
+  if (characterBackfillItems.value.length >= CHARACTER_BACKFILL_TOP_UP_THRESHOLD || !characterBackfillHasMore.value) {
     return
   }
 
-  await loadLocationBackfillItems({ append: true, preserveErrorMessage: true })
+  await loadCharacterBackfillItems({ append: true, preserveErrorMessage: true })
 }
 
-const saveLocationBackfill = async () => {
+const saveCharacterBackfill = async () => {
   if (!selectedBackfillItem.value || backfillSaveDisabled.value) {
     return
   }
 
-  locationBackfillSaving.value = true
-  locationBackfillFeedbackMessage.value = ''
-  locationBackfillErrorMessage.value = ''
-
+  characterBackfillSaving.value = true
+  characterBackfillFeedbackMessage.value = ''
+  characterBackfillErrorMessage.value = ''
   const item = selectedBackfillItem.value
 
   try {
-    await $fetch(`/api/admin/location-backfill/${item.id}`, {
+    await $fetch(`/api/admin/character-backfill/${item.id}`, {
       method: 'POST',
       headers: getAuthHeadersOrThrow(),
       body: {
-        countryName: backfillCountryName.value,
-        regionName: backfillRegionName.value,
-        cityName: backfillCityName.value
+        characterIds: backfillCharacterIds.value
       }
     })
 
-    invalidatePostDetail(item.id)
-    invalidateUserPage(item.author.username)
-    invalidateRegionPages()
-    removeLocationBackfillItem(item.id)
+    removeCharacterBackfillItem(item.id)
 
-    if (locationBackfillStats.value) {
-      locationBackfillStats.value = {
+    if (characterBackfillStats.value) {
+      characterBackfillStats.value = {
         totals: {
-          eligiblePosts: Math.max(0, locationBackfillStats.value.totals.eligiblePosts - 1)
+          eligiblePosts: Math.max(0, characterBackfillStats.value.totals.eligiblePosts - 1)
         }
       }
     }
 
-    locationBackfillFeedbackMessage.value = '地区字段已保存。'
-    await maybeTopUpLocationBackfillItems()
+    characterBackfillFeedbackMessage.value = '角色标签已保存。'
+    await maybeTopUpCharacterBackfillItems()
   } catch (error) {
-    locationBackfillErrorMessage.value = normalizeApiErrorMessage(error, '地区字段保存失败。')
+    characterBackfillErrorMessage.value = normalizeApiErrorMessage(error, '角色标签保存失败。')
   } finally {
-    locationBackfillSaving.value = false
+    characterBackfillSaving.value = false
   }
 }
 
@@ -376,8 +365,11 @@ watch(
   ([ready, isAdmin]) => {
     if (ready && isAdmin) {
       void loadPosts()
-      void loadLocationBackfillStats()
-      void loadLocationBackfillItems()
+      void loadCharacterBackfillStats()
+      void loadCharacterBackfillItems()
+      void loadCharacters().catch(() => {
+        // The maintenance panel exposes the catalog retry state.
+      })
     }
   },
   { immediate: true }
@@ -470,6 +462,16 @@ watch(
 
           <p class="admin-copy">{{ selectedPost.body || '作者没有留下额外备注。' }}</p>
 
+          <div class="review-character-tags">
+            <strong>角色标签</strong>
+            <div v-if="selectedPost.characters.length" class="review-character-tags__list">
+              <span v-for="character in selectedPost.characters" :key="character.id">
+                {{ characterName(character) }}
+              </span>
+            </div>
+            <p v-else class="admin-copy">当前审核项没有角色标签。</p>
+          </div>
+
           <div class="field-grid field-grid--two">
             <div class="review-info-block">
               <strong>坐标</strong>
@@ -536,69 +538,71 @@ watch(
     <section class="admin-maintenance-section">
       <div class="admin-section-head">
         <div>
-          <h2 class="admin-section-title">地区回填</h2>
-          <p class="admin-page-kicker">已发布原稿的 country / region / city 维护。</p>
+          <h2 class="admin-section-title">角色回填</h2>
+          <p class="admin-page-kicker">为尚未标注角色的已发布投稿补充标签。</p>
         </div>
 
         <div class="inline-actions admin-action-row">
           <button
             class="admin-icon-button"
             type="button"
-            :disabled="locationBackfillStatsLoading || locationBackfillLoading || locationBackfillSaving"
-            title="刷新地区回填队列"
-            aria-label="刷新地区回填队列"
-            @click="refreshLocationBackfillQueue"
+            :disabled="characterBackfillStatsLoading || characterBackfillLoading || characterBackfillSaving"
+            title="刷新角色回填队列"
+            aria-label="刷新角色回填队列"
+            @click="refreshCharacterBackfillQueue"
           >
             <i
               class="button-icon fa-solid"
-              :class="locationBackfillStatsLoading || locationBackfillLoading ? 'fa-spinner fa-spin' : 'fa-rotate-right'"
+              :class="characterBackfillStatsLoading || characterBackfillLoading ? 'fa-spinner fa-spin' : 'fa-rotate-right'"
               aria-hidden="true"
             />
-            <span class="sr-only">刷新地区回填队列</span>
+            <span class="sr-only">刷新角色回填队列</span>
           </button>
 
           <button
             class="admin-icon-button admin-icon-button--primary"
             type="button"
             :disabled="backfillSaveDisabled"
-            title="保存地区字段"
-            aria-label="保存地区字段"
-            @click="saveLocationBackfill"
+            title="保存角色标签"
+            aria-label="保存角色标签"
+            @click="saveCharacterBackfill"
           >
             <i
               class="button-icon fa-solid"
-              :class="locationBackfillSaving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"
+              :class="characterBackfillSaving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"
               aria-hidden="true"
             />
-            <span class="sr-only">保存地区字段</span>
+            <span class="sr-only">保存角色标签</span>
           </button>
         </div>
       </div>
 
+      <p v-if="characterBackfillErrorMessage" class="error-banner">{{ characterBackfillErrorMessage }}</p>
+
       <div class="admin-migration-tool__stats" aria-live="polite">
         <p>
           <span>剩余候选</span>
-          <strong>{{ locationBackfillStatsLoading ? '...' : (locationBackfillStats?.totals.eligiblePosts ?? '-') }}</strong>
+          <strong>{{ characterBackfillStatsLoading ? '...' : (characterBackfillStats?.totals.eligiblePosts ?? '-') }}</strong>
         </p>
         <p>
           <span>当前载入</span>
-          <strong>{{ locationBackfillLoading ? '...' : locationBackfillItems.length }}</strong>
+          <strong>{{ characterBackfillLoading ? '...' : characterBackfillItems.length }}</strong>
         </p>
         <p>
           <span>后续批次</span>
-          <strong>{{ locationBackfillHasMore ? '可继续加载' : '已到底' }}</strong>
+          <strong>{{ characterBackfillHasMore ? '可继续加载' : '已到底' }}</strong>
         </p>
       </div>
 
       <section class="review-layout review-layout--backfill">
         <aside class="admin-panel review-list backfill-list">
-          <template v-if="locationBackfillLoading">
-            <span class="admin-status">正在加载地区回填队列...</span>
+          <template v-if="characterBackfillLoading">
+            <span class="admin-status">正在加载角色回填队列...</span>
           </template>
 
-          <template v-else-if="locationBackfillItems.length">
+          <template v-else-if="characterBackfillItems.length">
             <button
-              v-for="item in locationBackfillItems"
+              v-for="item in characterBackfillItems"
               :key="item.id"
               :class="{ 'is-active': selectedBackfillId === item.id }"
               type="button"
@@ -607,14 +611,13 @@ watch(
               <strong>{{ item.title }}</strong>
               <p>@{{ item.author.username }}</p>
               <p>{{ item.placeName || '未填写地点名称' }}</p>
-              <p>{{ formatScopeLabel(item.countryName, item.regionName, item.cityName) }}</p>
               <p>{{ formatDateTime(item.createdAt) }}</p>
             </button>
           </template>
 
           <div v-else class="empty-state">
             <h2>当前没有待回填条目</h2>
-            <p>已发布且未修改的原稿处理完之后，这里会保持为空。</p>
+            <p>没有待审修改且尚未标注角色的已发布投稿会出现在这里。</p>
           </div>
         </aside>
 
@@ -647,7 +650,7 @@ watch(
               </button>
             </div>
 
-            <span class="admin-overline">回填 #{{ selectedBackfillItem.id }}</span>
+            <span class="admin-overline">角色回填 #{{ selectedBackfillItem.id }}</span>
             <h2>{{ selectedBackfillItem.title }}</h2>
             <div class="detail-meta admin-meta-row">
               <span class="admin-meta-item">@{{ selectedBackfillItem.author.username }}</span>
@@ -677,50 +680,36 @@ watch(
               </div>
             </div>
 
-            <div class="field-grid field-grid--two">
-              <label class="field-label">
-                <span>国家</span>
-                <input
-                  v-model="backfillCountryName"
-                  class="field-input"
-                  type="text"
-                  placeholder="可留空"
-                >
-              </label>
-
-              <label class="field-label">
-                <span>地区</span>
-                <input
-                  v-model="backfillRegionName"
-                  class="field-input"
-                  type="text"
-                  placeholder="必填"
-                >
-              </label>
+            <div class="field-label">
+              <span>图片中的角色</span>
+              <CharacterTagPicker
+                v-model="backfillCharacterIds"
+                :characters="characters"
+                :disabled="charactersLoading || characterBackfillSaving"
+              />
+              <small class="field-hint">选择所有图片中出现的角色，可多选。</small>
+              <button
+                v-if="charactersError"
+                class="backfill-catalog-retry"
+                type="button"
+                @click="loadCharacters(true)"
+              >
+                角色目录加载失败，点击重试
+              </button>
             </div>
 
-            <label class="field-label">
-              <span>城市 / 区县</span>
-              <input
-                v-model="backfillCityName"
-                class="field-input"
-                type="text"
-                placeholder="可留空"
-              >
-            </label>
-
             <p class="backfill-detail__hint">
-              仅更新当前原稿的 country / region / city，地区必填。
+              保存后标签立即参与公开地图筛选，当前条目会从队列移除。
             </p>
           </template>
 
           <div v-else class="empty-state">
             <h2>从左侧选择一条原稿</h2>
-            <p>保存后当前条目会从队列移除，并自动切到下一条。</p>
+            <p>补齐角色并保存后会自动切到下一条。</p>
           </div>
 
-          <p v-if="locationBackfillLoadingMore" class="admin-status">正在加载更多候选...</p>
-          <p v-if="locationBackfillFeedbackMessage" class="success-banner">{{ locationBackfillFeedbackMessage }}</p>
+          <p v-if="characterBackfillLoadingMore" class="admin-status">正在加载更多候选...</p>
+          <p v-if="characterBackfillFeedbackMessage" class="success-banner">{{ characterBackfillFeedbackMessage }}</p>
         </section>
       </section>
     </section>
@@ -747,5 +736,37 @@ watch(
   color: #666;
   font-size: 0.9rem;
   line-height: 1.6;
+}
+
+.review-character-tags {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.review-character-tags__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.review-character-tags__list span {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+
+.backfill-catalog-retry {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.82rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 </style>

@@ -2,6 +2,7 @@ import { getQuery, type H3Event } from 'h3'
 import type { AdminReviewPost } from '~~/shared/fumo'
 import { createAdminServerClient, requireAdminUser } from '~~/server/utils/supabase'
 import { getOrderedPhotoRows, signPhotoRows, type PhotoRow } from '~~/server/utils/posts'
+import { mapCharacterRelations } from '~~/server/utils/characters'
 
 const mapReviewRow = async (
   event: H3Event,
@@ -44,6 +45,7 @@ const mapReviewRow = async (
     capturedAt: row.captured_at,
     createdAt: row.created_at,
     reviewNote: row.review_note,
+    characters: mapCharacterRelations(row.post_revision_characters || row.post_characters),
     author: {
       id: row.user_id,
       username: row.profiles?.username ?? 'unknown',
@@ -87,6 +89,16 @@ export default defineEventHandler(async (event) => {
         thumb_path,
         sort_order
       ),
+      post_characters (
+        character_id,
+        characters (
+          id,
+          slug,
+          name_en,
+          name_zh,
+          name_ja
+        )
+      ),
       profiles!posts_user_id_fkey (
         username,
         avatar_url
@@ -129,6 +141,16 @@ export default defineEventHandler(async (event) => {
         image_path,
         thumb_path,
         sort_order
+      ),
+      post_revision_characters (
+        character_id,
+        characters (
+          id,
+          slug,
+          name_en,
+          name_zh,
+          name_ja
+        )
       ),
       profiles!post_revisions_user_id_fkey (
         username,
