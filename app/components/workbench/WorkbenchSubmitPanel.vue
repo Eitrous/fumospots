@@ -1281,7 +1281,10 @@ onBeforeUnmount(() => {
 
     <section class="workbench-stack-section">
       <div class="workbench-stack-section__head">
-        <strong>{{ t('submit.photoSectionTitle') }}</strong>
+        <strong>
+          {{ t('submit.photoSectionTitle') }}
+          <span class="required-field-marker" aria-hidden="true">*</span>
+        </strong>
         <div class="chip-row">
           <span class="status-inline">{{ selectedPhotos.length }}/{{ MAX_POST_PHOTOS }}</span>
           <span v-if="detectingExif" class="status-inline">{{ t('submit.exifReading') }}</span>
@@ -1360,11 +1363,15 @@ onBeforeUnmount(() => {
 
       <div class="field-grid">
         <label class="field-label">
-          <span>{{ t('submit.titleLabel') }}</span>
+          <span>
+            {{ t('submit.titleLabel') }}
+            <span class="required-field-marker" aria-hidden="true">*</span>
+          </span>
           <input
             v-model="title"
             class="field-input"
             maxlength="80"
+            aria-required="true"
             :placeholder="t('submit.titlePlaceholder')"
           >
         </label>
@@ -1385,7 +1392,10 @@ onBeforeUnmount(() => {
         </label>
 
         <div class="field-label character-picker-field">
-          <span>{{ t('submit.charactersLabel') }}</span>
+          <span>
+            {{ t('submit.charactersLabel') }}
+            <span class="required-field-marker" aria-hidden="true">*</span>
+          </span>
           <CharacterTagPicker
             v-model="selectedCharacterIds"
             :characters="characters"
@@ -1505,7 +1515,9 @@ onBeforeUnmount(() => {
       >
         <div class="field-grid field-grid--two coordinate-inputs__fields">
           <label class="field-label">
-            <span>{{ t('submit.latitudeLabel') }}</span>
+            <span>
+              {{ t('submit.latitudeLabel') }}
+            </span>
             <input
               v-model="latitudeInput"
               class="field-input"
@@ -1513,6 +1525,7 @@ onBeforeUnmount(() => {
               inputmode="decimal"
               autocomplete="off"
               spellcheck="false"
+              aria-required="true"
               :placeholder="t('submit.latitudePlaceholder')"
               :aria-invalid="Boolean(coordinateInputError)"
               :aria-describedby="coordinateInputError ? 'coordinate-input-error' : undefined"
@@ -1521,7 +1534,9 @@ onBeforeUnmount(() => {
           </label>
 
           <label class="field-label">
-            <span>{{ t('submit.longitudeLabel') }}</span>
+            <span>
+              {{ t('submit.longitudeLabel') }}
+            </span>
             <input
               v-model="longitudeInput"
               class="field-input"
@@ -1529,6 +1544,7 @@ onBeforeUnmount(() => {
               inputmode="decimal"
               autocomplete="off"
               spellcheck="false"
+              aria-required="true"
               :placeholder="t('submit.longitudePlaceholder')"
               :aria-invalid="Boolean(coordinateInputError)"
               :aria-describedby="coordinateInputError ? 'coordinate-input-error' : undefined"
@@ -1547,7 +1563,10 @@ onBeforeUnmount(() => {
         </p>
       </div>
       <div class="workbench-stack-section__head">
-        <strong>{{ t('submit.locationSectionTitle') }}</strong>
+        <strong>
+          {{ t('submit.locationSectionTitle') }}
+          <span class="required-field-marker" aria-hidden="true">*</span>
+        </strong>
       </div>
       <LocationPickerMap
         class="workbench-submit-map"
@@ -1607,6 +1626,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.workbench-panel .required-field-marker {
+  margin-left: 0.18em;
+  color: var(--accent) !important;
+  font-weight: 800;
+}
+
 .submit-top-tools {
   display: flex;
   align-items: center;

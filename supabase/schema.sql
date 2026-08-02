@@ -265,6 +265,54 @@ where posts.status = 'approved'
       and post_revisions.status = 'pending'
   );
 
+insert into public.post_characters (post_id, character_id, created_at)
+select
+  post_characters.post_id,
+  ichirin.id,
+  post_characters.created_at
+from public.post_characters
+join public.characters as unzan
+  on unzan.id = post_characters.character_id
+  and unzan.name_en = 'Unzan'
+cross join public.characters as ichirin
+where ichirin.name_en = 'Kumoi Ichirin'
+on conflict (post_id, character_id) do nothing;
+
+delete from public.post_characters
+where character_id in (
+  select id
+  from public.characters
+  where name_en = 'Unzan'
+);
+
+insert into public.post_revision_characters (revision_id, character_id, created_at)
+select
+  post_revision_characters.revision_id,
+  ichirin.id,
+  post_revision_characters.created_at
+from public.post_revision_characters
+join public.characters as unzan
+  on unzan.id = post_revision_characters.character_id
+  and unzan.name_en = 'Unzan'
+cross join public.characters as ichirin
+where ichirin.name_en = 'Kumoi Ichirin'
+on conflict (revision_id, character_id) do nothing;
+
+delete from public.post_revision_characters
+where character_id in (
+  select id
+  from public.characters
+  where name_en = 'Unzan'
+);
+
+delete from public.characters
+where name_en = 'Unzan';
+
+-- Release the affected seed range before compacting the corrected catalog.
+update public.characters
+set sort_order = sort_order + 1000000
+where sort_order between 89 and 172;
+
 with character_seed (name_en, name_zh, name_ja, sort_order) as (
   select
     trim(seed_name_en),
@@ -361,7 +409,6 @@ with character_seed (name_en, name_zh, name_ja, sort_order) as (
     'Nazrin',
     'Tatara Kogasa',
     'Kumoi Ichirin',
-    'Unzan',
     'Murasa Minamitsu',
     'Toramaru Shou',
     'Hijiri Byakuren',
@@ -505,7 +552,7 @@ with character_seed (name_en, name_zh, name_ja, sort_order) as (
     '莉格露·奈特巴格',
     '米斯蒂娅·萝蕾拉',
     '上白泽慧音',
-    '因幡天为',
+    '因幡帝',
     '铃仙·优昙华院·因幡',
     '八意永琳',
     '蓬莱山辉夜',
@@ -524,7 +571,6 @@ with character_seed (name_en, name_zh, name_ja, sort_order) as (
     '洩矢诹访子',
     '永江衣玖',
     '比那名居天子',
-    '大鲶鱼',
     '琪斯美',
     '黑谷山女',
     '水桥帕露西',
@@ -535,7 +581,7 @@ with character_seed (name_en, name_zh, name_ja, sort_order) as (
     '古明地恋',
     '娜兹玲',
     '多多良小伞',
-    '云居一轮&云山',
+    '云居一轮',
     '村纱水蜜',
     '寅丸星',
     '圣白莲',
@@ -698,7 +744,6 @@ with character_seed (name_en, name_zh, name_ja, sort_order) as (
     '洩矢　諏訪子',
     '永江　衣玖',
     '比那名居　天子',
-    '大ナマズ',
     'キスメ',
     '黒谷　ヤマメ',
     '水橋　パルスィ',

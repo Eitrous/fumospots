@@ -123,6 +123,7 @@ export type PublicPostDetail = {
   privacyMode: PrivacyMode
   capturedAt: string | null
   createdAt: string | null
+  characters: CharacterCatalogItem[]
   author: {
     username: string
     avatarUrl: string | null
@@ -327,7 +328,6 @@ export const MAX_TITLE_LENGTH = 80
 export const MAX_BODY_LENGTH = 1000
 export const MAX_SUGGESTION_LENGTH = 2000
 export const MAX_POST_PHOTOS = 10
-export const MAX_POST_CHARACTERS = 20
 export const MAX_PHOTO_UPLOAD_BYTES = 25 * 1024 * 1024
 export const MIN_PASSWORD_LENGTH = 8
 export const USERNAME_PATTERN = /^[a-zA-Z0-9_-]{3,24}$/

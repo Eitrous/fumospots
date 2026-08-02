@@ -105,7 +105,6 @@
     "searchPlaceholder": "输入角色名",
     "noResults": "没有找到匹配角色。",
     "catalogEmpty": "角色目录暂不可用。",
-    "limitReached": "最多选择 {max} 个角色",
     "remove": "移除 {name}",
     "note": "只会显示已添加角色 tag 的点位。"
   },
@@ -224,6 +223,8 @@
     "loadingDescription": "右侧会显示高清图片、公开位置和作者留言。",
     "authorNote": "作者留言",
     "authorNoteFallback": "作者没有留下额外说明。",
+    "characters": "角色",
+    "filterByCharacter": "在地图上显示含有{name}的投稿",
     "locationInfo": "地点信息",
     "locationDetailFallback": "未补充更细的行政区信息",
     "publicCoordinates": "公开坐标：{value}",
