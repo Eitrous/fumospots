@@ -31,6 +31,7 @@ const mobileDrawerDragging = ref(false)
 const mobileDrawerPeeking = computed(() => isMobile.value && mobileDrawerState.value === 'peek')
 const clientToolbarReady = ref(false)
 const randomPostLoading = ref(false)
+const selectedMapCharacterIds = ref<number[]>([])
 
 let viewportQuery: MediaQueryList | null = null
 let mobileDrawerPointerId: number | null = null
@@ -332,6 +333,17 @@ async function handleMarkerSelection(postId: number) {
   await openPanel('post', {
     postId
   })
+}
+
+function handleCharacterFilter(characterId: number) {
+  const alreadySelected = selectedMapCharacterIds.value.length === 1
+    && selectedMapCharacterIds.value[0] === characterId
+
+  selectedMapCharacterIds.value = alreadySelected ? [] : [characterId]
+
+  if (isMobile.value) {
+    void closeMobileSheet()
+  }
 }
 
 function closeMobileSheet() {
@@ -826,6 +838,8 @@ onBeforeUnmount(() => {
             <WorkbenchPostPanel
               v-else-if="currentPanel === 'post' && selectedPostId"
               :post-id="selectedPostId"
+              :active-character-filter-ids="selectedMapCharacterIds"
+              @filter-character="handleCharacterFilter"
             />
 
             <WorkbenchInfoPanel v-else />
@@ -836,6 +850,7 @@ onBeforeUnmount(() => {
 
     <section class="workbench-map-shell">
       <WorldMap
+        v-model:selected-character-ids="selectedMapCharacterIds"
         :selected-post-id="selectedPostId"
         :highlight-region-scope="currentPanel === 'region' ? selectedRegionScope : null"
         @select-post="handleMarkerSelection"

@@ -105,7 +105,6 @@
     "searchPlaceholder": "名を入力",
     "noResults": "一致するキャラクターがありません。",
     "catalogEmpty": "キャラクター一覧を利用できません。",
-    "limitReached": "最大 {max} 人まで選択できます",
     "remove": "{name} を削除",
     "note": "追加したキャラクタータグが付いた投稿のみ表示されます。"
   },
@@ -224,6 +223,8 @@
     "loadingDescription": "右側に高解像度画像、公開位置、作者メモが表示されます。",
     "authorNote": "作者メモ",
     "authorNoteFallback": "作者から追加メモはありません。",
+    "characters": "キャラクター",
+    "filterByCharacter": "{name}を含む投稿を地図に表示",
     "locationInfo": "場所情報",
     "locationDetailFallback": "より詳しい地域情報は未入力です。",
     "publicCoordinates": "公開座標: {value}",

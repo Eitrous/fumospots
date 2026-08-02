@@ -1,6 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CharacterCatalogItem } from '~~/shared/fumo'
-import { MAX_POST_CHARACTERS } from '~~/shared/fumo'
 
 type CharacterRow = {
   id: number
@@ -22,12 +21,11 @@ export const normalizeCharacterIds = (value: unknown) => {
 
   if (
     characterIds.length < 1
-    || characterIds.length > MAX_POST_CHARACTERS
     || characterIds.some(id => !Number.isInteger(id) || Number(id) <= 0)
   ) {
     throw createError({
       statusCode: 400,
-      statusMessage: `Please select between 1 and ${MAX_POST_CHARACTERS} characters.`
+      statusMessage: 'Please select at least one valid character.'
     })
   }
 

@@ -41,6 +41,9 @@ const props = withDefaults(
     highlightRegionScope: null,
   },
 );
+const selectedCharacterIds = defineModel<number[]>("selectedCharacterIds", {
+  default: () => [],
+});
 
 type RegionHighlightProperties = {
   scopeKey: string;
@@ -193,7 +196,6 @@ const previewSurfaceClass = computed(() => ({
 }));
 const mapCharacterFilterRef = ref<HTMLElement | null>(null);
 const mapCharacterFilterOpen = ref(false);
-const selectedCharacterIds = ref<number[]>([]);
 const selectedCharacterSlugs = computed(() => {
   const selectedIds = new Set(selectedCharacterIds.value);
   return characters.value
@@ -2397,6 +2399,17 @@ watch(
 );
 
 watch(
+  () => selectedCharacterIds.value.join(","),
+  (selectedIds) => {
+    if (selectedIds && !characters.value.length) {
+      void loadCharacters().catch(() => {
+        // The filter panel displays the retry state.
+      });
+    }
+  },
+);
+
+watch(
   () => selectedCharacterSlugs.value.join(","),
   () => {
     if (mapRef.value) {
@@ -2485,7 +2498,6 @@ onBeforeUnmount(() => {
     <div ref="mapEl" class="map-canvas" />
 
     <div
-      v-if="!isMobileViewport"
       ref="mapCharacterFilterRef"
       class="map-character-filter"
       :class="{ 'is-open': mapCharacterFilterOpen }"
@@ -2523,6 +2535,8 @@ onBeforeUnmount(() => {
         />
         <div v-if="selectedCharacterNames.length" class="map-character-filter__note">
           {{ t('characters.note') }}
+        </div>
+        <div v-else-if="isMobileViewport" class="map-character-filter__note-block">
         </div>
         <div
           v-if="charactersLoading || charactersError || selectedCharacterNames.length"
@@ -2783,6 +2797,10 @@ onBeforeUnmount(() => {
   justify-self: center;
 }
 
+.map-character-filter__note-block {
+  height: 0.5rem;
+}
+
 .map-character-filter__summary,
 .map-character-filter__status {
   min-width: 0;
@@ -2974,10 +2992,69 @@ onBeforeUnmount(() => {
 
 @media (max-width: 980px) {
   .map-character-filter {
-    display: none;
+    --map-character-filter-panel-width: 100vw;
+
+    top: env(safe-area-inset-top);
+    right: auto;
+    left: calc(50vw - var(--map-character-filter-panel-width)/2);
+    display: grid;
+    grid-template-columns: var(--map-character-filter-trigger-width) 1fr;
+    grid-template-rows: auto auto;
+    width: var(--map-character-filter-panel-width);
+    height: auto;
+    transform: translateY(
+      calc(-100% + var(--map-character-filter-trigger-width))
+    );
+    will-change: transform;
+    transition: transform 260ms var(--motion-smooth);
+  }
+
+  .map-character-filter.is-open {
+    right: auto;
+    transform: translateY(0);
+  }
+
+  .map-character-filter__trigger {
+    position: relative;
+    top: auto;
+    left: auto;
+    grid-row: 2;
+    grid-column: 1;
+    margin-top: -1px;
+    margin-left: 30px;
+    border: 1px solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 12px 12px;
+  }
+
+  .map-character-filter__badge {
+    top: auto;
+    right: -0.35rem;
+    bottom: -0.35rem;
+  }
+
+  .map-character-filter__panel,
+  .map-character-filter__panel.no-radius {
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
+    z-index: 3;
+    grid-row: 1;
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-bottom: 0;
+    border: 1px solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 28px 28px;
+  }
+
+  .character-picker__search-layer {
+    margin-bottom: 0.55rem;
   }
 
   .map-loading-indicator {
+    top: calc(0.95rem + env(safe-area-inset-top));
     right: 1rem;
   }
 }

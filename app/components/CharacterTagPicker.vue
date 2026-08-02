@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { onClickOutside } from '@vueuse/core'
 import type { CharacterCatalogItem } from '~~/shared/fumo'
-import { getCharacterDisplayName, MAX_POST_CHARACTERS } from '~~/shared/fumo'
+import { getCharacterDisplayName } from '~~/shared/fumo'
 
 const props = withDefaults(defineProps<{
   modelValue: number[]
   characters: CharacterCatalogItem[]
   disabled?: boolean
-  max?: number
   displayIcon?: boolean
   borderless?: boolean
   displayCounter?: boolean
 }>(), {
-  disabled: false,
-  max: MAX_POST_CHARACTERS
+  disabled: false
 })
 
 const emit = defineEmits<{
@@ -48,14 +46,12 @@ const availableCharacters = computed(() => {
         .some(value => String(value).toLocaleLowerCase().includes(query))
     })
 })
-const hasReachedLimit = computed(() => props.modelValue.length >= props.max)
-
 const characterName = (character: CharacterCatalogItem) => {
   return getCharacterDisplayName(character, locale.value)
 }
 
 const addCharacter = (character: CharacterCatalogItem) => {
-  if (props.disabled || hasReachedLimit.value || selectedIdSet.value.has(character.id)) {
+  if (props.disabled || selectedIdSet.value.has(character.id)) {
     return
   }
 
@@ -98,18 +94,18 @@ onClickOutside(rootRef, () => {
           v-model="search"
           type="search"
           autocomplete="off"
-          :disabled="disabled || hasReachedLimit"
-          :placeholder="hasReachedLimit ? t('characters.limitReached', { max }) : t('characters.searchPlaceholder')"
+          :disabled="disabled"
+          :placeholder="t('characters.searchPlaceholder')"
           :aria-label="t('characters.searchLabel')"
           @focus="handleFocus"
           @input="open = true"
           @keydown.esc="open = false"
         >
-        <span v-if="props.displayCounter" class="character-picker__count">{{ modelValue.length }}/{{ max }}</span>
+        <span v-if="props.displayCounter" class="character-picker__count">{{ modelValue.length }}</span>
       </div>
 
       <div
-        v-if="open && hasSearchQuery && availableCharacters.length && !disabled && !hasReachedLimit"
+        v-if="open && hasSearchQuery && availableCharacters.length && !disabled"
         class="character-picker__menu"
       >
         <button

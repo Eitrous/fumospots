@@ -1,6 +1,5 @@
 import { getQuery, type H3Event } from 'h3'
 import type { PublicMapPointCollection } from '~~/shared/fumo'
-import { MAX_POST_CHARACTERS } from '~~/shared/fumo'
 import { setPublicApiCacheControl } from '~~/server/utils/cacheControl'
 import { createPublicServerClient } from '~~/server/utils/supabase'
 import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
@@ -21,10 +20,7 @@ const parseCharacterSlugs = (value: unknown) => {
     .map(item => item.trim().toLowerCase())
     .filter(Boolean))]
 
-  if (
-    slugs.length > MAX_POST_CHARACTERS
-    || slugs.some(slug => !CHARACTER_SLUG_PATTERN.test(slug))
-  ) {
+  if (slugs.some(slug => !CHARACTER_SLUG_PATTERN.test(slug))) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Character filter is invalid.'
