@@ -13,6 +13,7 @@ import {
   postPayloadToRow
 } from '~~/server/utils/posts'
 import { ensureStoragePathsWebp, rewritePhotoPathsWithMap } from '~~/server/utils/imageWebp'
+import { assertCharacterIdsExist, characterIdsToRows } from '~~/server/utils/characters'
 
 export default defineEventHandler(async (event) => {
   await enforceRateLimit(event, 'submitIp', getRateLimitIdentifier(event))
@@ -32,6 +33,7 @@ export default defineEventHandler(async (event) => {
 
   const supabase = createPublicServerClient(event, accessToken)
   const payload = normalizePostPayload(body, user.id)
+  await assertCharacterIdsExist(supabase, payload.characterIds)
   const conversionResult = await ensureStoragePathsWebp(
     event,
     payload.photos.flatMap((photo) => [photo.imagePath, photo.thumbPath]),
@@ -79,6 +81,22 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 500,
       statusMessage: photosError.message || 'Failed to save post photos.'
+    })
+  }
+
+  const { error: charactersError } = await supabase
+    .from('post_characters')
+    .insert(characterIdsToRows(webpPayload.characterIds, 'post_id', data.id))
+
+  if (charactersError) {
+    await supabase
+      .from('posts')
+      .delete()
+      .eq('id', data.id)
+
+    throw createError({
+      statusCode: 500,
+      statusMessage: charactersError.message || 'Failed to save post characters.'
     })
   }
 

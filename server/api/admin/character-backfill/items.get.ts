@@ -1,33 +1,28 @@
 import { getQuery, type H3Event } from 'h3'
-import type { AdminLocationBackfillItem } from '~~/shared/fumo'
+import type { AdminCharacterBackfillItem } from '~~/shared/fumo'
 import { getOrderedPhotoRows, signPhotoRows, type PhotoRow } from '~~/server/utils/posts'
 import { createAdminServerClient, requireAdminUser } from '~~/server/utils/supabase'
 
-type LocationBackfillAuthorRow = {
-  username: string | null
-  avatar_url: string | null
-}
-
-type LocationBackfillRow = {
+type CharacterBackfillRow = {
   id: number
   title: string
   body: string | null
   image_path: string
   thumb_path: string | null
   place_name: string | null
-  country_name: string | null
-  region_name: string | null
-  city_name: string | null
   exact_lat: number | null
   exact_lng: number | null
   public_lat: number | null
   public_lng: number | null
-  privacy_mode: AdminLocationBackfillItem['privacyMode']
+  privacy_mode: AdminCharacterBackfillItem['privacyMode']
   captured_at: string | null
   created_at: string | null
   user_id: string
   post_photos: PhotoRow[] | null
-  profiles: LocationBackfillAuthorRow | null
+  profiles: {
+    username: string | null
+    avatar_url: string | null
+  } | null
 }
 
 const DEFAULT_LIMIT = 50
@@ -43,17 +38,13 @@ const toListLimit = (value: unknown) => {
 
 const toAfterId = (value: unknown) => {
   const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    return 0
-  }
-
-  return parsed
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0
 }
 
 const mapBackfillRow = async (
   event: H3Event,
-  row: LocationBackfillRow
-): Promise<AdminLocationBackfillItem> => {
+  row: CharacterBackfillRow
+): Promise<AdminCharacterBackfillItem> => {
   const photos = await signPhotoRows(event, getOrderedPhotoRows(row.post_photos, row))
   const coverPhoto = photos[0] || {
     imageUrl: null,
@@ -68,9 +59,6 @@ const mapBackfillRow = async (
     thumbUrl: coverPhoto.thumbUrl,
     photos,
     placeName: row.place_name,
-    countryName: row.country_name,
-    regionName: row.region_name,
-    cityName: row.city_name,
     exactLocation: row.exact_lat != null && row.exact_lng != null
       ? { lat: row.exact_lat, lng: row.exact_lng }
       : null,
@@ -95,6 +83,31 @@ export default defineEventHandler(async (event) => {
   const limit = toListLimit(query.limit)
   const afterId = toAfterId(query.afterId)
   const supabase = createAdminServerClient(event)
+  const { data: candidateRows, error: candidateError } = await supabase
+    .from('admin_character_backfill_posts')
+    .select('id')
+    .gt('id', afterId)
+    .order('id', { ascending: true })
+    .limit(limit + 1)
+
+  if (candidateError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: candidateError.message
+    })
+  }
+
+  const candidateIds = (candidateRows || [])
+    .slice(0, limit)
+    .map(row => Number(row.id))
+
+  if (!candidateIds.length) {
+    return {
+      items: [],
+      nextCursor: null,
+      hasMore: false
+    }
+  }
 
   const { data, error } = await supabase
     .from('posts')
@@ -105,9 +118,6 @@ export default defineEventHandler(async (event) => {
       image_path,
       thumb_path,
       place_name,
-      country_name,
-      region_name,
-      city_name,
       exact_lat,
       exact_lng,
       public_lat,
@@ -124,15 +134,9 @@ export default defineEventHandler(async (event) => {
       profiles!posts_user_id_fkey (
         username,
         avatar_url
-      ),
-      post_revisions!left(id)
+      )
     `)
-    .eq('status', 'approved')
-    .is('post_revisions.id', null)
-    .gt('id', afterId)
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true })
-    .limit(limit)
+    .in('id', candidateIds)
 
   if (error) {
     throw createError({
@@ -141,12 +145,18 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const rows = (data || []) as LocationBackfillRow[]
-  const items = await Promise.all(rows.map((row) => mapBackfillRow(event, row)))
+  const rowsById = new Map((data || []).map(row => [
+    Number(row.id),
+    row as unknown as CharacterBackfillRow
+  ]))
+  const rows = candidateIds
+    .map(id => rowsById.get(id))
+    .filter((row): row is CharacterBackfillRow => Boolean(row))
+  const items = await Promise.all(rows.map(row => mapBackfillRow(event, row)))
 
   return {
     items,
     nextCursor: items.at(-1)?.id ?? null,
-    hasMore: items.length === limit
+    hasMore: (candidateRows || []).length > limit
   }
 })

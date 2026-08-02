@@ -98,6 +98,17 @@
       "loadFailed": "所有投稿加载失败。"
     }
   },
+  "characters": {
+    "loading": "正在加载角色目录…",
+    "loadFailed": "角色目录加载失败，点击重试",
+    "searchLabel": "搜索角色",
+    "searchPlaceholder": "输入角色名",
+    "noResults": "没有找到匹配角色。",
+    "catalogEmpty": "角色目录暂不可用。",
+    "limitReached": "最多选择 {max} 个角色",
+    "remove": "移除 {name}",
+    "note": "只会显示已添加角色 tag 的点位。"
+  },
   "map": {
     "loading": "地图正在展开…",
     "loadFallbackHint": "如果你能看到我，\n说明地图还没有加载出来，\n请尝试刷新",
@@ -110,7 +121,13 @@
     "previewEmpty": "这里暂时没有可预览的点位。",
     "previewLoadFailed": "点位预览加载失败。",
     "previewListLabel": "临近点位列表",
-    "untitledPost": "未命名投稿"
+    "untitledPost": "未命名投稿",
+    "characterFilterButton": "按角色筛选地图点位",
+    "characterFilterTitle": "筛选角色",
+    "characterFilterHint": "多选时显示包含任意所选角色的投稿。",
+    "characterFilterClear": "清除",
+    "characterFilterActive": "{names} · 当前显示 {count} 个点位",
+    "characterFilterInactive": "尚未筛选 · 当前显示 {count} 个点位"
   },
   "auth": {
     "eyebrow": "",
@@ -251,6 +268,8 @@
     "bodyLabel": "作者留言",
     "bodyPlaceholder": "可以写写这张照片是在什么场景下拍的，或者这只 fumo 当天经历了什么。",
     "capturedAtLabel": "拍摄时间",
+    "charactersLabel": "图片中的角色",
+    "charactersHint": "请选择图片中出现的全部角色，可多选。目前角色名暂以英文显示。",
     "privacyApprox": "公开近似位置",
     "privacyExact": "公开精确坐标",
     "locationSectionTitle": "标记地点",
@@ -288,6 +307,7 @@
       "invalidPhotoType": "仅支持上传 WebP、JPEG、PNG、AVIF 或 GIF 照片。",
       "photoTooLarge": "单个上传文件不能超过 {max}。",
       "titleRequired": "请输入标题。",
+      "characterRequired": "请至少选择一个图片中出现的角色。",
       "coordinatePairRequired": "请同时填写纬度和经度。",
       "latitudeInvalid": "纬度必须是 -90 到 90 之间的数字。",
       "longitudeInvalid": "经度必须是 -180 到 180 之间的数字。",

@@ -98,6 +98,17 @@
       "loadFailed": "すべての投稿の読み込みに失敗しました。"
     }
   },
+  "characters": {
+    "loading": "キャラクター一覧を読み込み中…",
+    "loadFailed": "一覧の読み込みに失敗しました。クリックして再試行",
+    "searchLabel": "キャラクターを検索",
+    "searchPlaceholder": "名を入力",
+    "noResults": "一致するキャラクターがありません。",
+    "catalogEmpty": "キャラクター一覧を利用できません。",
+    "limitReached": "最大 {max} 人まで選択できます",
+    "remove": "{name} を削除",
+    "note": "追加したキャラクタータグが付いた投稿のみ表示されます。"
+  },
   "map": {
     "loading": "地図を展開中…",
     "loadFallbackHint": "これが見えている場合は、\n地図がまだ読み込まれていません。\n再読み込みを試してください。",
@@ -110,7 +121,13 @@
     "previewEmpty": "ここには表示できる投稿がまだありません。",
     "previewLoadFailed": "投稿プレビューの読み込みに失敗しました。",
     "previewListLabel": "近くの投稿リスト",
-    "untitledPost": "無題の投稿"
+    "untitledPost": "無題の投稿",
+    "characterFilterButton": "キャラクターで地図を絞り込む",
+    "characterFilterTitle": "キャラクターを絞り込む",
+    "characterFilterHint": "複数選択時は、いずれかのキャラクターを含む投稿を表示します。",
+    "characterFilterClear": "解除",
+    "characterFilterActive": "{names}・{count} 件を表示中",
+    "characterFilterInactive": "絞り込みなし・{count} 件を表示中"
   },
   "auth": {
     "eyebrow": "",
@@ -251,6 +268,8 @@
     "bodyLabel": "作者メモ",
     "bodyPlaceholder": "どんな場面で撮ったのか、あるいはその日の fumo の小さな出来事を書いてみてください。",
     "capturedAtLabel": "撮影日時",
+    "charactersLabel": "写真に写っているキャラクター",
+    "charactersHint": "写真に写っているキャラクターをすべて選択してください。複数選択できます。現在は英語名で表示されます。",
     "privacyApprox": "概略位置を公開",
     "privacyExact": "正確な座標を公開",
     "locationSectionTitle": "地点を指定",
@@ -288,6 +307,7 @@
       "invalidPhotoType": "WebP、JPEG、PNG、AVIF、GIF の写真のみアップロードできます。",
       "photoTooLarge": "アップロードできるファイルは1件あたり {max} 以下です。",
       "titleRequired": "タイトルを入力してください。",
+      "characterRequired": "写真に写っているキャラクターを1人以上選択してください。",
       "coordinatePairRequired": "緯度と経度を両方入力してください。",
       "latitudeInvalid": "緯度は -90 から 90 までの数値で入力してください。",
       "longitudeInvalid": "経度は -180 から 180 までの数値で入力してください。",

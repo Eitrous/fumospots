@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onClickOutside } from "@vueuse/core";
 import type {
   GeoJSONSource,
   Map as MapLibreMap,
@@ -12,7 +13,11 @@ import type {
   PublicMapPreviewResponse,
   RegionScope,
 } from "~~/shared/fumo";
-import { MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM } from "~~/shared/fumo";
+import {
+  getCharacterDisplayName,
+  MAP_DEFAULT_CENTER,
+  MAP_DEFAULT_ZOOM,
+} from "~~/shared/fumo";
 import { resolveHostedMapStyleUrl } from "~~/shared/mapStyle";
 import {
   BASE_MAP_HEALTH_CHECK_DELAY_MS,
@@ -106,6 +111,12 @@ const { isDark } = useTheme();
 const config = useRuntimeConfig();
 const { getPostDetail } = usePostDetailCache();
 const { getRegionGeometry } = useRegionGeometryCache();
+const {
+  characters,
+  loading: charactersLoading,
+  error: charactersError,
+  loadCharacters,
+} = useCharacterCatalog();
 useMapResourceHints();
 
 const MOBILE_BREAKPOINT = 980;
@@ -180,6 +191,21 @@ const previewSheetDragging = ref(false);
 const previewSurfaceClass = computed(() => ({
   "is-dark": isDark.value,
 }));
+const mapCharacterFilterRef = ref<HTMLElement | null>(null);
+const mapCharacterFilterOpen = ref(false);
+const selectedCharacterIds = ref<number[]>([]);
+const selectedCharacterSlugs = computed(() => {
+  const selectedIds = new Set(selectedCharacterIds.value);
+  return characters.value
+    .filter(character => selectedIds.has(character.id))
+    .map(character => character.slug);
+});
+const selectedCharacterNames = computed(() => {
+  const selectedIds = new Set(selectedCharacterIds.value);
+  return characters.value
+    .filter(character => selectedIds.has(character.id))
+    .map(character => getCharacterDisplayName(character, locale.value));
+});
 
 const hasActivePreview = computed(() => Boolean(activePreviewGroupKey.value));
 const previewListLabel = computed(() => t("map.previewListLabel"));
@@ -756,8 +782,29 @@ const buildRegionHighlightCollection = (
 const fetchGeoJson = async (signal?: AbortSignal) => {
   return await $fetch<PublicMapPointCollection>("/api/map/posts", {
     signal,
+    query: selectedCharacterSlugs.value.length
+      ? { characters: selectedCharacterSlugs.value.join(",") }
+      : undefined,
   });
 };
+
+const toggleMapCharacterFilter = () => {
+  mapCharacterFilterOpen.value = !mapCharacterFilterOpen.value;
+
+  if (mapCharacterFilterOpen.value && !characters.value.length) {
+    void loadCharacters().catch(() => {
+      // The filter panel displays the retry state.
+    });
+  }
+};
+
+const clearMapCharacterFilter = () => {
+  selectedCharacterIds.value = [];
+};
+
+onClickOutside(mapCharacterFilterRef, () => {
+  mapCharacterFilterOpen.value = false;
+});
 
 const fetchInitialMapStyle = async () => {
   const styleUrl = getMapStyleUrl();
@@ -2350,6 +2397,21 @@ watch(
 );
 
 watch(
+  () => selectedCharacterSlugs.value.join(","),
+  () => {
+    if (mapRef.value) {
+      void refreshSource();
+    }
+  },
+);
+
+watch(isMobileViewport, (mobile) => {
+  if (mobile) {
+    mapCharacterFilterOpen.value = false;
+  }
+});
+
+watch(
   () => [
     props.highlightRegionScope?.countryName || "",
     props.highlightRegionScope?.regionName || "",
@@ -2421,6 +2483,65 @@ onBeforeUnmount(() => {
     </div>-->
 
     <div ref="mapEl" class="map-canvas" />
+
+    <div
+      v-if="!isMobileViewport"
+      ref="mapCharacterFilterRef"
+      class="map-character-filter"
+      :class="{ 'is-open': mapCharacterFilterOpen }"
+      @click.stop
+    >
+      <button
+        class="map-character-filter__trigger"
+        :class="{ 'is-active': selectedCharacterIds.length > 0 }"
+        type="button"
+        :title="t('map.characterFilterButton')"
+        :aria-label="t('map.characterFilterButton')"
+        :aria-expanded="mapCharacterFilterOpen"
+        @click="toggleMapCharacterFilter"
+      >
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true" />
+        <span v-if="selectedCharacterIds.length" class="map-character-filter__badge">
+          {{ selectedCharacterIds.length }}
+        </span>
+      </button>
+
+      <section
+        class="map-character-filter__panel"
+        :class="{'no-radius': !selectedCharacterNames.length}"
+        :aria-label="t('map.characterFilterTitle')"
+        :aria-hidden="!mapCharacterFilterOpen"
+        :inert="!mapCharacterFilterOpen"
+      >
+        <CharacterTagPicker
+          v-model="selectedCharacterIds"
+          :characters="characters"
+          :disabled="charactersLoading"
+          :display-icon="false"
+          :borderless="true"
+          :display-counter="false"
+        />
+        <div v-if="selectedCharacterNames.length" class="map-character-filter__note">
+          {{ t('characters.note') }}
+        </div>
+        <div
+          v-if="charactersLoading || charactersError || selectedCharacterNames.length"
+          class="map-character-filter__meta"
+        >
+          <p v-if="charactersLoading" class="map-character-filter__status">
+            {{ t('characters.loading') }}
+          </p>
+          <button
+            v-else-if="charactersError"
+            class="map-character-filter__retry"
+            type="button"
+            @click="loadCharacters(true)"
+          >
+            {{ t('characters.loadFailed') }}
+          </button>
+        </div>
+      </section>
+    </div>
 
     <div
       v-if="hasActivePreview && !isMobileViewport"
@@ -2550,6 +2671,152 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.map-character-filter {
+  --map-character-filter-trigger-width: 2.85rem;
+  --map-character-filter-panel-width: min(20rem, calc(100vw - 5rem));
+
+  position: absolute;
+  top: 1rem;
+  right: calc(0px - var(--map-character-filter-panel-width));
+  z-index: 45;
+  width: calc(
+    var(--map-character-filter-trigger-width) +
+      var(--map-character-filter-panel-width)
+  );
+  height: 2.85rem;
+  transition: right 200ms var(--motion-smooth);
+}
+
+.map-character-filter.is-open {
+  right: 0;
+}
+
+.map-character-filter__trigger {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: inline-grid;
+  width: var(--map-character-filter-trigger-width);
+  height: 2.85rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-radius: 8px 0 0 8px;
+  background: var(--surface);
+  color: var(--ink);
+  transition:
+    border-color 160ms var(--motion-smooth),
+    border-radius 160ms var(--motion-smooth),
+    color 160ms var(--motion-smooth);
+}
+
+.map-character-filter__trigger:hover,
+.map-character-filter__trigger:focus-visible,
+.map-character-filter__trigger.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: 0;
+}
+
+.map-character-filter__badge {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  display: inline-grid;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.25rem;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.map-character-filter__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  gap: 0.55rem;
+  width: var(--map-character-filter-panel-width);
+  padding: 0 0.65rem;
+  border: 1px solid var(--border);
+  border-right: 0;
+  border-radius: 0 0 0 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.map-character-filter:not(.is-open) .map-character-filter__panel {
+  pointer-events: none;
+}
+
+.map-character-filter__panel :deep(.character-picker__search) {
+  min-height: calc(var(--map-character-filter-trigger-width) - 2px);
+}
+
+.map-character-filter__panel :deep(.character-picker__search input) {
+  height: calc(var(--map-character-filter-trigger-width) - 2px);
+}
+
+.map-character-filter__panel.no-radius {
+  border-radius: 0;
+  margin-bottom: 2px;
+}
+
+.map-character-filter__meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.map-character-filter__note {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  justify-self: center;
+}
+
+.map-character-filter__summary,
+.map-character-filter__status {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-character-filter__clear,
+.map-character-filter__retry {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.map-character-filter__retry {
+  width: fit-content;
+  color: var(--danger);
+}
+
+.map-loading-indicator {
+  right: 3.65rem;
+}
+
 .map-preview-popover {
   position: absolute;
   z-index: 30;
@@ -2703,5 +2970,15 @@ onBeforeUnmount(() => {
 .map-preview-sheet-leave-to .map-preview-sheet {
   --preview-sheet-enter-offset: 24px;
   opacity: 0;
+}
+
+@media (max-width: 980px) {
+  .map-character-filter {
+    display: none;
+  }
+
+  .map-loading-indicator {
+    right: 1rem;
+  }
 }
 </style>
