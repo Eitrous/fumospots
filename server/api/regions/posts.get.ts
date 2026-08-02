@@ -2,7 +2,7 @@ import { getQuery } from 'h3'
 import type { PublicRegionPage, RegionScope, RegionSort } from '~~/shared/fumo'
 import {
   getPreferredGeocodeAcceptLanguage,
-  isSouthTibetLocationScope,
+  isTibetLocationScope,
   isTaiwanLocationScope,
   normalizeLocationScopeForLocale
 } from '~~/server/utils/geocode'
@@ -35,6 +35,14 @@ const SOUTH_TIBET_REGION_ALIASES = [
   '\u963f\u9b6f\u7d0d\u6070\u723e\u90a6',
   '\u963f\u9c81\u7eb3\u67e5\u5c14\u90a6',
   '\u30a2\u30eb\u30ca\u30fc\u30c1\u30e3\u30eb\u30fb\u30d7\u30e9\u30c7\u30fc\u30b7\u30e5\u5dde'
+]
+const TIBET_REGION_ALIASES = [
+  'Tibet',
+  'Tibet Autonomous Region',
+  '\u897f\u85cf',
+  '\u897f\u85cf\u81ea\u6cbb\u533a',
+  '\u897f\u85cf\u81ea\u6cbb\u5340',
+  '\u30c1\u30d9\u30c3\u30c8\u81ea\u6cbb\u533a'
 ]
 const TAIWAN_COUNTRY_ALIASES = ['Taiwan', '\u53f0\u6e7e', '\u53f0\u7063', '\u81fa\u7063']
 const TAIWAN_PROVINCE_ALIASES = ['Taiwan Province', '\u53f0\u6e7e\u7701', '\u53f0\u7063\u7701', '\u81fa\u7063\u7701']
@@ -155,31 +163,44 @@ const fetchTaiwanPosts = async (
   return sortRegionPosts(dedupeRegionPosts(rows), sort)
 }
 
-const fetchSouthTibetPosts = async (
+const fetchTibetPosts = async (
   supabase: ReturnType<typeof createPublicServerClient>,
   scope: RegionScope,
   sort: RegionSort
 ) => {
-  let request = supabase
-    .from('public_approved_posts')
-    .select(REGION_POST_SELECT)
-    .in('country_name', SOUTH_TIBET_COUNTRY_ALIASES)
-    .in('region_name', SOUTH_TIBET_REGION_ALIASES)
+  const requests = [
+    supabase
+      .from('public_approved_posts')
+      .select(REGION_POST_SELECT)
+      .in('country_name', CHINA_COUNTRY_ALIASES)
+      .in('region_name', TIBET_REGION_ALIASES),
+    supabase
+      .from('public_approved_posts')
+      .select(REGION_POST_SELECT)
+      .in('country_name', SOUTH_TIBET_COUNTRY_ALIASES)
+      .in('region_name', SOUTH_TIBET_REGION_ALIASES)
+  ]
 
   if (scope.cityName) {
-    request = request.eq('city_name', scope.cityName)
+    requests[0] = requests[0].eq('city_name', scope.cityName)
+    requests[1] = requests[1].eq('city_name', scope.cityName)
   }
 
-  const { data, error } = await request
+  const results = await Promise.all(requests)
+  const rows: RegionPostRow[] = []
 
-  if (error) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: error.message
-    })
+  for (const result of results) {
+    if (result.error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: result.error.message
+      })
+    }
+
+    rows.push(...((result.data || []) as RegionPostRow[]))
   }
 
-  return sortRegionPosts(dedupeRegionPosts((data || []) as RegionPostRow[]), sort)
+  return sortRegionPosts(dedupeRegionPosts(rows), sort)
 }
 
 export default defineEventHandler(async (event): Promise<PublicRegionPage> => {
@@ -213,8 +234,8 @@ export default defineEventHandler(async (event): Promise<PublicRegionPage> => {
   if (isTaiwanLocationScope(scope)) {
     posts = await fetchTaiwanPosts(supabase, scope, sort)
     postCount = posts.length
-  } else if (isSouthTibetLocationScope(scope)) {
-    posts = await fetchSouthTibetPosts(supabase, scope, sort)
+  } else if (isTibetLocationScope(scope)) {
+    posts = await fetchTibetPosts(supabase, scope, sort)
     postCount = posts.length
   } else {
     const countRequest = applyRegionFilters(

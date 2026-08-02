@@ -65,6 +65,14 @@ const SOUTH_TIBET_REGION_ALIASES = new Set([
   '\u963f\u9c81\u7eb3\u67e5\u5c14\u90a6',
   '\u30a2\u30eb\u30ca\u30fc\u30c1\u30e3\u30eb\u30fb\u30d7\u30e9\u30c7\u30fc\u30b7\u30e5\u5dde'
 ])
+const TIBET_REGION_ALIASES = new Set([
+  'tibet',
+  'tibet autonomous region',
+  '\u897f\u85cf',
+  '\u897f\u85cf\u81ea\u6cbb\u533a',
+  '\u897f\u85cf\u81ea\u6cbb\u5340',
+  '\u30c1\u30d9\u30c3\u30c8\u81ea\u6cbb\u533a'
+])
 // Coordinate-verified resident-point matches from Tibet's 2024 standard-map
 // databases and the Ministry of Civil Affairs' standardized-name batches.
 // Do not add phonetic guesses here.
@@ -217,15 +225,15 @@ const SOUTH_TIBET_POLITICAL_LABELS: Record<GeocodeLocale, {
 }> = {
   'zh-CN': {
     countryName: '\u4e2d\u56fd',
-    regionName: '\u85cf\u5357\u5730\u533a'
+    regionName: '\u897f\u85cf\u81ea\u6cbb\u533a'
   },
   en: {
     countryName: 'China',
-    regionName: 'South Tibet'
+    regionName: 'Tibet Autonomous Region'
   },
   ja: {
     countryName: '\u4e2d\u56fd',
-    regionName: '\u85cf\u5357\u5730\u533a'
+    regionName: '\u897f\u85cf\u81ea\u6cbb\u533a'
   }
 }
 
@@ -421,12 +429,16 @@ export const isSouthTibetRegionValue = (value: string | null | undefined) => {
   return SOUTH_TIBET_REGION_ALIASES.has(normalizeLocationValue(value))
 }
 
+export const isTibetRegionValue = (value: string | null | undefined) => {
+  return TIBET_REGION_ALIASES.has(normalizeLocationValue(value))
+}
+
 export const isTaiwanLocationScope = (scope: LocationScopeFields) => {
   return isTaiwanCountryValue(scope.countryName) || isTaiwanProvinceValue(scope.regionName)
 }
 
-export const isSouthTibetLocationScope = (scope: LocationScopeFields) => {
-  return isSouthTibetRegionValue(scope.regionName)
+export const isTibetLocationScope = (scope: LocationScopeFields) => {
+  return isTibetRegionValue(scope.regionName)
 }
 
 export const normalizeLocationScopeForLocale = <T extends LocationScopeFields>(

@@ -8,6 +8,9 @@ import {
 } from '~~/server/utils/supabase'
 import { getOrderedPhotoRows, type PhotoRow } from '~~/server/utils/posts'
 
+const LIKE_POST_PAGE_SIZE = 1000
+const LIKE_COUNT_BATCH_SIZE = 200
+
 export default defineEventHandler(async (event): Promise<PublicUserPage> => {
   const username = decodeURIComponent(String(getRouterParam(event, 'username') || '')).trim()
 
@@ -60,12 +63,70 @@ export default defineEventHandler(async (event): Promise<PublicUserPage> => {
     )
   `
 
-  const { data: rows, error: postsError } = await postsClient
-    .from(isSelf ? 'posts' : 'public_approved_posts')
-    .select(isSelf ? selfPostsSelect : postsSelect)
-    .eq('user_id', profile.id)
-    .order('created_at', { ascending: false })
-    .limit(100)
+  const loadTotalLikeCount = async () => {
+    const approvedPostIds: number[] = []
+
+    for (let from = 0; ; from += LIKE_POST_PAGE_SIZE) {
+      const { data: approvedPosts, error: approvedPostsError } = await supabase
+        .from('public_approved_posts')
+        .select('id')
+        .eq('user_id', profile.id)
+        .order('id', { ascending: true })
+        .range(from, from + LIKE_POST_PAGE_SIZE - 1)
+
+      if (approvedPostsError) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: approvedPostsError.message
+        })
+      }
+
+      approvedPostIds.push(...(approvedPosts || []).map((post) => post.id))
+
+      if ((approvedPosts?.length || 0) < LIKE_POST_PAGE_SIZE) {
+        break
+      }
+    }
+
+    if (!approvedPostIds.length) {
+      return 0
+    }
+
+    let totalLikeCount = 0
+
+    for (let from = 0; from < approvedPostIds.length; from += LIKE_COUNT_BATCH_SIZE) {
+      const postIdBatch = approvedPostIds.slice(from, from + LIKE_COUNT_BATCH_SIZE)
+      const { data: likeCounts, error: likeCountsError } = await supabase
+        .from('public_approved_post_like_counts')
+        .select('like_count')
+        .in('post_id', postIdBatch)
+
+      if (likeCountsError) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: likeCountsError.message
+        })
+      }
+
+      totalLikeCount += (likeCounts || []).reduce(
+        (sum, post) => sum + (Number(post.like_count) || 0),
+        0
+      )
+    }
+
+    return totalLikeCount
+  }
+
+  const [postsResult, totalLikeCount] = await Promise.all([
+    postsClient
+      .from(isSelf ? 'posts' : 'public_approved_posts')
+      .select(isSelf ? selfPostsSelect : postsSelect)
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(100),
+    loadTotalLikeCount()
+  ])
+  const { data: rows, error: postsError } = postsResult
 
   if (postsError) {
     throw createError({
@@ -140,6 +201,7 @@ export default defineEventHandler(async (event): Promise<PublicUserPage> => {
       avatarUrl: profile.avatar_url
     },
     isSelf,
+    totalLikeCount,
     posts: posts.map((post) => {
       const coverPath = coverPathsByPostId.get(post.id)
 

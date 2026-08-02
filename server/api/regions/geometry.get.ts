@@ -3,7 +3,6 @@ import type { GeoBounds, RegionGeometryResponse, RegionScope } from '~~/shared/f
 import {
   fetchSearchGeocodeEntries,
   getPreferredGeocodeAcceptLanguage,
-  isSouthTibetLocationScope,
   normalizeGeocodeResult,
   normalizeLocationScopeForLocale,
   type NominatimSearchEntry
@@ -114,10 +113,6 @@ const pickGeometry = (entry: NominatimSearchEntry) => {
 }
 
 const buildRegionSearchQuery = (scope: RegionScope) => {
-  if (isSouthTibetLocationScope(scope)) {
-    return ['India', 'Arunachal Pradesh', scope.cityName].filter(Boolean).join(' ')
-  }
-
   return [scope.countryName, scope.regionName, scope.cityName].filter(Boolean).join(' ')
 }
 
