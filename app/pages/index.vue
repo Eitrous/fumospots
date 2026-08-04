@@ -51,6 +51,19 @@ const selectedUsername = computed(() => workbenchState.value.username)
 const selectedRegionScope = computed(() => workbenchState.value.regionScope)
 const selectedRegionSort = computed(() => workbenchState.value.regionSort)
 const nextPath = computed(() => workbenchState.value.nextPath)
+const ownProfileMapUserId = computed(() => {
+  const viewer = auth.viewer.value
+
+  if (
+    currentPanel.value !== 'user'
+    || !viewer?.profile.username
+    || selectedUsername.value !== viewer.profile.username
+  ) {
+    return null
+  }
+
+  return viewer.userId
+})
 const submitPath = computed(() => router.resolve(createWorkbenchLocation('submit')).fullPath)
 const isDetailPanel = computed(() => currentPanel.value === 'post')
 const showHomeBrand = computed(() => currentPanel.value === 'info')
@@ -852,6 +865,7 @@ onBeforeUnmount(() => {
       <WorldMap
         v-model:selected-character-ids="selectedMapCharacterIds"
         :selected-post-id="selectedPostId"
+        :filter-user-id="ownProfileMapUserId"
         :highlight-region-scope="currentPanel === 'region' ? selectedRegionScope : null"
         @select-post="handleMarkerSelection"
         @fly-completed="handleFlyCompleted"

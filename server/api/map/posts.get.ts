@@ -8,9 +8,11 @@ type MapPostRow = {
   id: number
   public_lat: number
   public_lng: number
+  user_id?: string | null
 }
 
 const MAP_POSTS_PAGE_SIZE = 1000
+const MAP_POST_OWNER_BATCH_SIZE = 500
 const CHARACTER_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const parseCharacterSlugs = (value: unknown) => {
@@ -47,6 +49,7 @@ const fetchMapPosts = async (event: H3Event, characterSlugs: string[]) => {
           .from('public_approved_posts')
           .select(`
             id,
+            user_id,
             public_lat,
             public_lng
           `)
@@ -72,6 +75,31 @@ const fetchMapPosts = async (event: H3Event, characterSlugs: string[]) => {
     }
   }
 
+  const ownerByPostId = new Map<number, string>()
+
+  if (characterSlugs.length) {
+    for (let index = 0; index < rows.length; index += MAP_POST_OWNER_BATCH_SIZE) {
+      const postIds = rows
+        .slice(index, index + MAP_POST_OWNER_BATCH_SIZE)
+        .map(row => row.id)
+      const { data, error } = await supabase
+        .from('public_approved_posts')
+        .select('id, user_id')
+        .in('id', postIds)
+
+      if (error) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: error.message
+        })
+      }
+
+      for (const row of data || []) {
+        ownerByPostId.set(Number(row.id), row.user_id)
+      }
+    }
+  }
+
   const features = rows.map((row) => ({
     type: 'Feature',
     geometry: {
@@ -79,7 +107,8 @@ const fetchMapPosts = async (event: H3Event, characterSlugs: string[]) => {
       coordinates: [row.public_lng, row.public_lat]
     },
     properties: {
-      id: row.id
+      id: row.id,
+      userId: row.user_id || ownerByPostId.get(row.id) || ''
     }
   })) satisfies PublicMapPointCollection['features']
 

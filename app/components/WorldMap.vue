@@ -34,10 +34,12 @@ import {
 const props = withDefaults(
   defineProps<{
     selectedPostId?: number | null;
+    filterUserId?: string | null;
     highlightRegionScope?: RegionScope | null;
   }>(),
   {
     selectedPostId: null,
+    filterUserId: null,
     highlightRegionScope: null,
   },
 );
@@ -1373,12 +1375,24 @@ const syncDisplaySource = () => {
     return;
   }
 
-  const groups = resolveMaxZoomCollisionGroups(visibleMembers);
+  const filterUserId = props.filterUserId?.trim() || "";
+  const displayedMembers = filterUserId
+    ? visibleMembers.filter(
+        (member) => member.feature.properties?.userId === filterUserId,
+      )
+    : visibleMembers;
+  const groups = resolveMaxZoomCollisionGroups(displayedMembers);
 
   for (const group of groups) {
     if (group.length === 1) {
-      const baseFeature = group[0].feature;
-      const displayKey = `post:${group[0].id}`;
+      const member = group[0];
+
+      if (!member) {
+        continue;
+      }
+
+      const baseFeature = member.feature;
+      const displayKey = `post:${member.id}`;
       const markerState = getMarkerAppearState(
         displayKey,
         now,
@@ -2395,6 +2409,14 @@ watch(
     if (selectedPostId) {
       void focusSelectedPost(selectedPostId);
     }
+  },
+);
+
+watch(
+  () => props.filterUserId,
+  () => {
+    closeActivePreview();
+    syncDisplaySource();
   },
 );
 
