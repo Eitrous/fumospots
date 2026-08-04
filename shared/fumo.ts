@@ -64,6 +64,7 @@ export type PublicMapCollection = GeoJSON.FeatureCollection<
 
 export type PublicMapPointProperties = {
   id: number
+  userId: string
 }
 
 export type PublicMapPointCollection = GeoJSON.FeatureCollection<

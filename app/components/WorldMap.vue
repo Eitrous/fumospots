@@ -3,6 +3,7 @@ import { onClickOutside } from "@vueuse/core";
 import type {
   GeoJSONSource,
   Map as MapLibreMap,
+  MapLayerMouseEvent,
   MapMouseEvent,
   MapSourceDataEvent,
 } from "maplibre-gl";
@@ -34,10 +35,12 @@ import {
 const props = withDefaults(
   defineProps<{
     selectedPostId?: number | null;
+    filterUserId?: string | null;
     highlightRegionScope?: RegionScope | null;
   }>(),
   {
     selectedPostId: null,
+    filterUserId: null,
     highlightRegionScope: null,
   },
 );
@@ -143,6 +146,11 @@ const MARKER_COLLISION_GAP_PX = 0;
 const POINT_MARKER_FILL_RADIUS_PX = 6;
 const POINT_MARKER_OUTER_RADIUS_PX =
   POINT_MARKER_FILL_RADIUS_PX + CLUSTER_BUBBLE_STROKE_WIDTH_PX;
+const POINT_HOVER_PREVIEW_DELAY_MS = 600;
+const POINT_HOVER_PREVIEW_GAP_PX = 14;
+const POINT_HOVER_PREVIEW_HEIGHT_PX = 108;
+const POINT_HOVER_PREVIEW_MARGIN_PX = 12;
+const POINT_HOVER_PREVIEW_WIDTH_PX = 162;
 const PREVIEW_SHEET_CLOSE_THRESHOLD_PX = 92;
 const REGION_FIT_DURATION_MS = 720;
 const REGION_FIT_MAX_ZOOM = 10;
@@ -189,6 +197,11 @@ const activePreviewMemberIds = ref<number[]>([]);
 const previewItems = ref<PublicMapPreviewItem[]>([]);
 const previewLoading = ref(false);
 const previewError = ref("");
+const pointHoverPreviewAnchor = shallowRef<{ x: number; y: number } | null>(
+  null,
+);
+const pointHoverPreviewItem = shallowRef<PublicMapPreviewItem | null>(null);
+const pointHoverPreviewPostId = ref<number | null>(null);
 const previewSheetDragOffset = ref(0);
 const previewSheetDragging = ref(false);
 const previewSurfaceClass = computed(() => ({
@@ -210,6 +223,11 @@ const selectedCharacterNames = computed(() => {
 });
 
 const hasActivePreview = computed(() => Boolean(activePreviewGroupKey.value));
+const hasPointHoverPreview = computed(
+  () =>
+    !isMobileViewport.value &&
+    Boolean(pointHoverPreviewAnchor.value && pointHoverPreviewItem.value),
+);
 const previewListLabel = computed(() => t("map.previewListLabel"));
 
 const desktopPreviewStyle = computed(() => {
@@ -294,6 +312,51 @@ const mobilePreviewSheetStyle = computed(() => {
   };
 });
 
+const pointHoverPreviewStyle = computed(() => {
+  if (
+    isMobileViewport.value ||
+    !pointHoverPreviewAnchor.value ||
+    !mapEl.value
+  ) {
+    return {};
+  }
+
+  const anchorX = pointHoverPreviewAnchor.value.x;
+  const anchorY = pointHoverPreviewAnchor.value.y;
+  const mapWidth = mapEl.value.clientWidth;
+  const mapHeight = mapEl.value.clientHeight;
+  const fitsOnRight =
+    anchorX +
+      POINT_HOVER_PREVIEW_GAP_PX +
+      POINT_HOVER_PREVIEW_WIDTH_PX +
+      POINT_HOVER_PREVIEW_MARGIN_PX <=
+    mapWidth;
+  const preferredLeft = fitsOnRight
+    ? anchorX + POINT_HOVER_PREVIEW_GAP_PX
+    : anchorX - POINT_HOVER_PREVIEW_GAP_PX - POINT_HOVER_PREVIEW_WIDTH_PX;
+  const maxLeft = Math.max(
+    POINT_HOVER_PREVIEW_MARGIN_PX,
+    mapWidth - POINT_HOVER_PREVIEW_MARGIN_PX - POINT_HOVER_PREVIEW_WIDTH_PX,
+  );
+  const maxTop = Math.max(
+    POINT_HOVER_PREVIEW_MARGIN_PX,
+    mapHeight - POINT_HOVER_PREVIEW_MARGIN_PX - POINT_HOVER_PREVIEW_HEIGHT_PX,
+  );
+
+  return {
+    left: `${clamp(
+      preferredLeft,
+      POINT_HOVER_PREVIEW_MARGIN_PX,
+      maxLeft,
+    )}px`,
+    top: `${clamp(
+      anchorY - POINT_HOVER_PREVIEW_HEIGHT_PX / 2,
+      POINT_HOVER_PREVIEW_MARGIN_PX,
+      maxTop,
+    )}px`,
+  };
+});
+
 let maplibregl: typeof import("maplibre-gl") | null = null;
 
 let selectedPostFocusSequence = 0;
@@ -301,6 +364,7 @@ let regionHighlightSequence = 0;
 let refreshSourceSequence = 0;
 let mapStyleSequence = 0;
 let previewRequestSequence = 0;
+let pointHoverPreviewRequestSequence = 0;
 let pendingRegionFitKey: string | null = null;
 let mapInteractionsBound = false;
 let initialSourceLoaded = false;
@@ -325,10 +389,13 @@ let pendingStyleSourceRefresh = false;
 let previewSheetPointerId: number | null = null;
 let previewSheetPointerStartY = 0;
 let previewOpenedAt = 0;
+let pointHoverPreviewTimer: number | null = null;
+let pointHoverPreviewAbortController: AbortController | null = null;
 let displayClusterStateByKey = new Map<string, DisplayClusterState>();
 let displayFeatureKeys = new Set<string>();
 const markerAppearStartByKey = new Map<string, number>();
 const previewGroupCache = new Map<string, PublicMapPreviewItem[]>();
+const pointHoverPreviewCache = new Map<number, PublicMapPreviewItem | null>();
 
 const getMapStyleUrl = (dark = isDark.value) => {
   return resolveHostedMapStyleUrl({
@@ -739,6 +806,25 @@ const closeActivePreview = () => {
   previewSheetDragging.value = false;
   previewRequestSequence += 1;
   teardownPreviewSheetPointerListeners();
+};
+
+const closePointHoverPreview = () => {
+  if (pointHoverPreviewTimer !== null) {
+    window.clearTimeout(pointHoverPreviewTimer);
+    pointHoverPreviewTimer = null;
+  }
+
+  pointHoverPreviewAbortController?.abort();
+  pointHoverPreviewAbortController = null;
+  pointHoverPreviewRequestSequence += 1;
+  pointHoverPreviewPostId.value = null;
+  pointHoverPreviewAnchor.value = null;
+  pointHoverPreviewItem.value = null;
+};
+
+const closeMapPreviews = () => {
+  closeActivePreview();
+  closePointHoverPreview();
 };
 
 const canClosePreviewFromSurfaceClick = () => {
@@ -1373,12 +1459,24 @@ const syncDisplaySource = () => {
     return;
   }
 
-  const groups = resolveMaxZoomCollisionGroups(visibleMembers);
+  const filterUserId = props.filterUserId?.trim() || "";
+  const displayedMembers = filterUserId
+    ? visibleMembers.filter(
+        (member) => member.feature.properties?.userId === filterUserId,
+      )
+    : visibleMembers;
+  const groups = resolveMaxZoomCollisionGroups(displayedMembers);
 
   for (const group of groups) {
     if (group.length === 1) {
-      const baseFeature = group[0].feature;
-      const displayKey = `post:${group[0].id}`;
+      const member = group[0];
+
+      if (!member) {
+        continue;
+      }
+
+      const baseFeature = member.feature;
+      const displayKey = `post:${member.id}`;
       const markerState = getMarkerAppearState(
         displayKey,
         now,
@@ -1488,6 +1586,7 @@ const refreshSource = async (
     return;
   }
 
+  closePointHoverPreview();
   const currentSequence = ++refreshSourceSequence;
   mapPostsAbortController?.abort();
   const abortController = new AbortController();
@@ -1512,6 +1611,7 @@ const refreshSource = async (
     collection.value = nextCollection;
     lastMapSourceLoadedAt = Date.now();
     previewGroupCache.clear();
+    pointHoverPreviewCache.clear();
     closeActivePreview();
     syncSelectionSource();
     syncDisplaySource();
@@ -1758,6 +1858,79 @@ const getPreviewItemsForGroup = async (clusterState: DisplayClusterState) => {
   return nextItems;
 };
 
+const getPointHoverPreviewItem = async (
+  postId: number,
+  signal: AbortSignal,
+) => {
+  if (pointHoverPreviewCache.has(postId)) {
+    return pointHoverPreviewCache.get(postId) || null;
+  }
+
+  const response = await $fetch<PublicMapPreviewResponse>("/api/map/previews", {
+    query: {
+      ids: String(postId),
+    },
+    signal,
+  });
+  const item =
+    response.items.find((candidate) => candidate.id === postId) || null;
+  pointHoverPreviewCache.set(postId, item);
+  return item;
+};
+
+const schedulePointHoverPreview = (
+  postId: number,
+  anchor: { x: number; y: number },
+) => {
+  if (!import.meta.client || isMobileViewport.value) {
+    closePointHoverPreview();
+    return;
+  }
+
+  if (pointHoverPreviewPostId.value === postId) {
+    pointHoverPreviewAnchor.value = anchor;
+    return;
+  }
+
+  closePointHoverPreview();
+  pointHoverPreviewPostId.value = postId;
+  pointHoverPreviewAnchor.value = anchor;
+  const currentSequence = pointHoverPreviewRequestSequence;
+
+  pointHoverPreviewTimer = window.setTimeout(() => {
+    pointHoverPreviewTimer = null;
+    const abortController = new AbortController();
+    pointHoverPreviewAbortController = abortController;
+
+    void getPointHoverPreviewItem(postId, abortController.signal)
+      .then((item) => {
+        if (
+          !item ||
+          abortController.signal.aborted ||
+          currentSequence !== pointHoverPreviewRequestSequence ||
+          pointHoverPreviewPostId.value !== postId
+        ) {
+          return;
+        }
+
+        closeActivePreview();
+        pointHoverPreviewItem.value = item;
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+
+        // A hover preview failure should not affect map interaction.
+      })
+      .finally(() => {
+        if (pointHoverPreviewAbortController === abortController) {
+          pointHoverPreviewAbortController = null;
+        }
+      });
+  }, POINT_HOVER_PREVIEW_DELAY_MS);
+};
+
 const openClusterPreview = async (clusterState: DisplayClusterState) => {
   const currentSequence = ++previewRequestSequence;
 
@@ -1850,6 +2023,8 @@ const handlePreviewItemSelection = (postId: number) => {
 };
 
 const handleMapClick = async (event: MapMouseEvent) => {
+  closePointHoverPreview();
+
   if (!mapRef.value) {
     return;
   }
@@ -1912,6 +2087,48 @@ const handleMarkerMouseLeave = () => {
   mapRef.value?.getCanvas().style.setProperty("cursor", "");
 };
 
+const handleClusterMouseEnter = () => {
+  closePointHoverPreview();
+  handleMarkerMouseEnter();
+};
+
+const handlePointMarkerMouseMove = (event: MapLayerMouseEvent) => {
+  if (!mapRef.value || isMobileViewport.value) {
+    closePointHoverPreview();
+    return;
+  }
+
+  const feature = event.features?.find(
+    (candidate) => candidate.layer.id === "unclustered-point",
+  );
+  const postId = getFeaturePostId(
+    feature?.properties as Record<string, unknown> | undefined,
+  );
+
+  if (!postId) {
+    closePointHoverPreview();
+    return;
+  }
+
+  let anchor = event.point;
+  if (feature?.geometry.type === "Point") {
+    const coordinates = feature.geometry.coordinates;
+    const lng = Number(coordinates[0]);
+    const lat = Number(coordinates[1]);
+
+    if (Number.isFinite(lng) && Number.isFinite(lat)) {
+      anchor = mapRef.value.project([lng, lat]);
+    }
+  }
+
+  schedulePointHoverPreview(postId, anchor);
+};
+
+const handlePointMarkerMouseLeave = () => {
+  handleMarkerMouseLeave();
+  closePointHoverPreview();
+};
+
 const bindMapInteractions = () => {
   if (!mapRef.value || mapInteractionsBound) {
     return;
@@ -1919,14 +2136,19 @@ const bindMapInteractions = () => {
 
   mapInteractionsBound = true;
 
-  mapRef.value.on("mouseenter", "clusters", handleMarkerMouseEnter);
+  mapRef.value.on("mouseenter", "clusters", handleClusterMouseEnter);
   mapRef.value.on("mouseleave", "clusters", handleMarkerMouseLeave);
   mapRef.value.on("mouseenter", "unclustered-point", handleMarkerMouseEnter);
-  mapRef.value.on("mouseleave", "unclustered-point", handleMarkerMouseLeave);
+  mapRef.value.on("mousemove", "unclustered-point", handlePointMarkerMouseMove);
+  mapRef.value.on(
+    "mouseleave",
+    "unclustered-point",
+    handlePointMarkerMouseLeave,
+  );
 
   mapRef.value.on("click", handleMapClick);
-  mapRef.value.on("dragstart", closeActivePreview);
-  mapRef.value.on("zoomstart", closeActivePreview);
+  mapRef.value.on("dragstart", closeMapPreviews);
+  mapRef.value.on("zoomstart", closeMapPreviews);
   mapRef.value.on("zoomend", scheduleDisplaySourceSync);
 };
 
@@ -1935,13 +2157,18 @@ const unbindMapInteractions = () => {
     return;
   }
 
-  mapRef.value.off("mouseenter", "clusters", handleMarkerMouseEnter);
+  mapRef.value.off("mouseenter", "clusters", handleClusterMouseEnter);
   mapRef.value.off("mouseleave", "clusters", handleMarkerMouseLeave);
   mapRef.value.off("mouseenter", "unclustered-point", handleMarkerMouseEnter);
-  mapRef.value.off("mouseleave", "unclustered-point", handleMarkerMouseLeave);
+  mapRef.value.off("mousemove", "unclustered-point", handlePointMarkerMouseMove);
+  mapRef.value.off(
+    "mouseleave",
+    "unclustered-point",
+    handlePointMarkerMouseLeave,
+  );
   mapRef.value.off("click", handleMapClick);
-  mapRef.value.off("dragstart", closeActivePreview);
-  mapRef.value.off("zoomstart", closeActivePreview);
+  mapRef.value.off("dragstart", closeMapPreviews);
+  mapRef.value.off("zoomstart", closeMapPreviews);
   mapRef.value.off("zoomend", scheduleDisplaySourceSync);
 
   mapInteractionsBound = false;
@@ -2297,6 +2524,7 @@ const handlePreviewSheetPointerDown = (event: PointerEvent) => {
 };
 
 const handleWindowResize = () => {
+  closePointHoverPreview();
   updateViewportWidth();
   scheduleMapResize();
 };
@@ -2389,12 +2617,22 @@ onMounted(async () => {
 watch(
   () => props.selectedPostId,
   (selectedPostId) => {
+    closePointHoverPreview();
     closeActivePreview();
     syncSelectionSource();
 
     if (selectedPostId) {
       void focusSelectedPost(selectedPostId);
     }
+  },
+);
+
+watch(
+  () => props.filterUserId,
+  () => {
+    closePointHoverPreview();
+    closeActivePreview();
+    syncDisplaySource();
   },
 );
 
@@ -2420,6 +2658,7 @@ watch(
 
 watch(isMobileViewport, (mobile) => {
   if (mobile) {
+    closePointHoverPreview();
     mapCharacterFilterOpen.value = false;
   }
 });
@@ -2449,6 +2688,7 @@ onBeforeUnmount(() => {
   mapStyleSequence += 1;
   refreshSourceSequence += 1;
   previewRequestSequence += 1;
+  closePointHoverPreview();
   mapPostsAbortController?.abort();
   mapPostsAbortController = null;
   visibleMapSourceRefreshPromise = null;
@@ -2556,6 +2796,25 @@ onBeforeUnmount(() => {
         </div>
       </section>
     </div>
+
+    <Transition name="map-point-hover-preview">
+      <div
+        v-if="hasPointHoverPreview && pointHoverPreviewItem"
+        class="map-point-hover-preview"
+        :class="previewSurfaceClass"
+        :style="pointHoverPreviewStyle"
+        role="img"
+        :aria-label="pointHoverPreviewItem.title || t('map.untitledPost')"
+      >
+        <img
+          v-if="pointHoverPreviewItem.thumbUrl"
+          :src="pointHoverPreviewItem.thumbUrl"
+          :alt="pointHoverPreviewItem.title || t('map.untitledPost')"
+          decoding="async"
+        />
+        <i v-else class="fa-solid fa-image" aria-hidden="true" />
+      </div>
+    </Transition>
 
     <div
       v-if="hasActivePreview && !isMobileViewport"
@@ -2833,6 +3092,45 @@ onBeforeUnmount(() => {
 
 .map-loading-indicator {
   right: 3.65rem;
+}
+
+.map-point-hover-preview {
+  position: absolute;
+  z-index: 29;
+  display: grid;
+  width: 162px;
+  height: 108px;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  pointer-events: none;
+  transform-origin: center;
+}
+
+.map-point-hover-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.map-point-hover-preview i {
+  font-size: 1.35rem;
+}
+
+.map-point-hover-preview-enter-active,
+.map-point-hover-preview-leave-active {
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.map-point-hover-preview-enter-from,
+.map-point-hover-preview-leave-to {
+  opacity: 0;
+  transform: translateY(3px) scale(0.96);
 }
 
 .map-preview-popover {
