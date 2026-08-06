@@ -2,6 +2,10 @@
 import type { RandomPostResponse, WorkbenchPanel } from '~~/shared/fumo'
 
 type MobileDrawerState = 'peek' | 'workbench' | 'detail'
+type ViewedProfileIdentity = {
+  username: string
+  userId: string
+}
 
 const { t } = useI18n()
 const { isDark, toggleTheme } = useTheme()
@@ -22,6 +26,7 @@ const router = useRouter()
 const auth = useAuthState()
 const toolbarController = provideWorkbenchToolbarActionController()
 const { prefetchPostDetail } = usePostDetailCache()
+const { getUserPage } = useUserPageCache()
 const { showNotice: openWorkbenchNotice } = useAppNotice()
 
 const isMobile = ref(false)
@@ -32,6 +37,7 @@ const mobileDrawerPeeking = computed(() => isMobile.value && mobileDrawerState.v
 const clientToolbarReady = ref(false)
 const randomPostLoading = ref(false)
 const selectedMapCharacterIds = ref<number[]>([])
+const viewedProfileIdentity = ref<ViewedProfileIdentity | null>(null)
 
 let viewportQuery: MediaQueryList | null = null
 let mobileDrawerPointerId: number | null = null
@@ -43,6 +49,7 @@ let suppressNextMobileDrawerClick = false
 let mobileDrawerClickSuppressionTimer: ReturnType<typeof setTimeout> | null = null
 let preserveMobileDrawerState = false
 let pendingRandomPostFlyComplete = false
+let viewedProfileLoadSequence = 0
 
 const workbenchState = computed(() => resolveWorkbenchState(route.query))
 const currentPanel = computed(() => workbenchState.value.panel)
@@ -51,18 +58,14 @@ const selectedUsername = computed(() => workbenchState.value.username)
 const selectedRegionScope = computed(() => workbenchState.value.regionScope)
 const selectedRegionSort = computed(() => workbenchState.value.regionSort)
 const nextPath = computed(() => workbenchState.value.nextPath)
-const ownProfileMapUserId = computed(() => {
-  const viewer = auth.viewer.value
-
-  if (
-    currentPanel.value !== 'user'
-    || !viewer?.profile.username
-    || selectedUsername.value !== viewer.profile.username
-  ) {
+const viewedProfileMapUserId = computed(() => {
+  if (currentPanel.value !== 'user' || !selectedUsername.value) {
     return null
   }
 
-  return viewer.userId
+  return viewedProfileIdentity.value?.username === selectedUsername.value
+    ? viewedProfileIdentity.value.userId
+    : `pending:${selectedUsername.value}`
 })
 const submitPath = computed(() => router.resolve(createWorkbenchLocation('submit')).fullPath)
 const isDetailPanel = computed(() => currentPanel.value === 'post')
@@ -151,6 +154,36 @@ const primaryActionIcon = computed(() => {
 
   return resolveToolbarValue(primaryToolbarAction.value?.icon, 'fa-paper-plane')
 })
+
+const loadViewedProfileUserId = async () => {
+  const currentLoad = ++viewedProfileLoadSequence
+  const username = selectedUsername.value
+  viewedProfileIdentity.value = null
+
+  if (currentPanel.value !== 'user' || !username || !auth.ready.value) {
+    return
+  }
+
+  try {
+    const userPage = await getUserPage(username, {
+      headers: auth.authHeaders.value,
+      viewerId: auth.viewer.value?.userId ?? null
+    })
+
+    if (
+      currentLoad === viewedProfileLoadSequence
+      && currentPanel.value === 'user'
+      && selectedUsername.value === username
+    ) {
+      viewedProfileIdentity.value = {
+        username,
+        userId: userPage.profile.id
+      }
+    }
+  } catch {
+    // The user panel displays the request error; keep the map empty meanwhile.
+  }
+}
 
 const mobileDrawerStateForPanel = (panel: WorkbenchPanel): MobileDrawerState => {
   if (panel === 'post') {
@@ -604,6 +637,19 @@ function handleFlyCompleted() {
 }
 
 watch(
+  () => [
+    currentPanel.value,
+    selectedUsername.value,
+    auth.ready.value,
+    auth.authHeaders.value.Authorization || ''
+  ],
+  () => {
+    void loadViewedProfileUserId()
+  },
+  { immediate: true }
+)
+
+watch(
   () => currentPanel.value,
   (panel) => {
     if (!import.meta.client || !isMobile.value) {
@@ -637,6 +683,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  viewedProfileLoadSequence += 1
   viewportQuery?.removeEventListener('change', syncViewportMode)
 
   if (mobileDrawerClickSuppressionTimer) {
@@ -862,11 +909,13 @@ onBeforeUnmount(() => {
     </aside>
 
     <section class="workbench-map-shell">
+      <!-- 临时关闭：地区投稿页不再在地图高亮显示区域。恢复时改回：
+           :highlight-region-scope="currentPanel === 'region' ? selectedRegionScope : null" -->
       <WorldMap
         v-model:selected-character-ids="selectedMapCharacterIds"
         :selected-post-id="selectedPostId"
-        :filter-user-id="ownProfileMapUserId"
-        :highlight-region-scope="currentPanel === 'region' ? selectedRegionScope : null"
+        :filter-user-id="viewedProfileMapUserId"
+        :highlight-region-scope="null"
         @select-post="handleMarkerSelection"
         @fly-completed="handleFlyCompleted"
       />
