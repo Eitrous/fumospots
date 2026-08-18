@@ -10,6 +10,7 @@ import type {
 import type {
   GeoBounds,
   PublicMapPointCollection,
+  PublicMapPointPage,
   PublicMapPreviewItem,
   PublicMapPreviewResponse,
   RegionScope,
@@ -72,6 +73,21 @@ type DisplayPointCollection = GeoJSON.FeatureCollection<
   GeoJSON.Point,
   DisplayPointProperties
 >;
+type DisplayPointFeature = DisplayPointCollection["features"][number];
+
+type MarkerAnimationState = {
+  durationMs: number;
+  fromOpacity: number;
+  fromScale: number;
+  phase: "enter" | "exit";
+  startAt: number;
+};
+
+type MarkerAnimationFrame = {
+  opacity: number;
+  remove: boolean;
+  scale: number;
+};
 
 type RawPointFeature = PublicMapPointCollection["features"][number];
 
@@ -134,9 +150,10 @@ const CLUSTER_ZOOM_FIT_DURATION_MS = 620;
 const CLUSTER_ZOOM_BREAKOUT_MARGIN = 0.1;
 const CLUSTER_ZOOM_BREAKOUT_STEP = 0.25;
 const CLUSTER_ZOOM_STEP = 0.85;
-const MARKER_APPEAR_DURATION_MS = 240;
-const MARKER_APPEAR_START_OPACITY = 0.62;
-const MARKER_APPEAR_START_SCALE = 0.35;
+const MARKER_ENTER_DURATION_MS = 320;
+const MARKER_ENTER_START_OPACITY = 0.62;
+const MARKER_EXIT_DURATION_MS = 240;
+const MARKER_ANIMATION_MIN_DURATION_MS = 60;
 const MAP_SOURCE_FOCUS_REFRESH_DEBOUNCE_MS = 250;
 const MAP_SOURCE_FRESHNESS_MS = 60_000;
 const POINT_MARKER_MIN_RADIUS_PX = 2.5;
@@ -377,7 +394,7 @@ let mapResizeObserver: ResizeObserver | null = null;
 let mapResizeFrame: number | null = null;
 let mapRuntimeSyncFrame: number | null = null;
 let mapDisplaySyncFrame: number | null = null;
-let markerAppearAnimationFrame: number | null = null;
+let markerAnimationFrame: number | null = null;
 let baseMapHealthCheckTimer: number | null = null;
 let baseMapRecoveryTimer: number | null = null;
 let baseMapTileLoadingFallbackTimer: number | null = null;
@@ -391,9 +408,10 @@ let previewSheetPointerStartY = 0;
 let previewOpenedAt = 0;
 let pointHoverPreviewTimer: number | null = null;
 let pointHoverPreviewAbortController: AbortController | null = null;
+let collectionQueryKey: string | null = null;
 let displayClusterStateByKey = new Map<string, DisplayClusterState>();
 let displayFeatureKeys = new Set<string>();
-const markerAppearStartByKey = new Map<string, number>();
+const markerAnimationByKey = new Map<string, MarkerAnimationState>();
 const previewGroupCache = new Map<string, PublicMapPreviewItem[]>();
 const pointHoverPreviewCache = new Map<number, PublicMapPreviewItem | null>();
 
@@ -499,105 +517,161 @@ const getDisplayFeatureKey = (
   return Number.isInteger(id) && id > 0 ? `post:${id}` : "";
 };
 
-const getMarkerAppearState = (
+const easeInCubic = (progress: number) => progress ** 3;
+
+const getFeatureMarkerFrame = (
+  feature: DisplayPointFeature,
+): MarkerAnimationFrame => {
+  const opacity = Number(feature.properties?.marker_opacity);
+  const scale = Number(feature.properties?.marker_scale);
+
+  return {
+    opacity: Number.isFinite(opacity) ? clamp(opacity, 0, 1) : 1,
+    remove: false,
+    scale: Number.isFinite(scale) ? clamp(scale, 0, 1) : 1,
+  };
+};
+
+const startMarkerAnimation = (
+  displayKey: string,
+  phase: MarkerAnimationState["phase"],
+  now: number,
+  fromFrame: MarkerAnimationFrame,
+) => {
+  const targetOpacity = phase === "enter" ? 1 : 0;
+  const targetScale = phase === "enter" ? 1 : 0;
+  const fullDuration = phase === "enter"
+    ? MARKER_ENTER_DURATION_MS
+    : MARKER_EXIT_DURATION_MS;
+  const remainingDistance = Math.max(
+    Math.abs(targetOpacity - fromFrame.opacity),
+    Math.abs(targetScale - fromFrame.scale),
+  );
+
+  markerAnimationByKey.set(displayKey, {
+    durationMs: Math.max(
+      MARKER_ANIMATION_MIN_DURATION_MS,
+      fullDuration * remainingDistance,
+    ),
+    fromOpacity: fromFrame.opacity,
+    fromScale: fromFrame.scale,
+    phase,
+    startAt: now,
+  });
+};
+
+const getMarkerAnimationFrame = (
   displayKey: string,
   now: number,
-  isNewFeature: boolean,
-) => {
-  if (!displayKey) {
+): MarkerAnimationFrame => {
+  const animation = markerAnimationByKey.get(displayKey);
+
+  if (!animation) {
     return {
       opacity: 1,
+      remove: false,
       scale: 1,
     };
   }
 
-  let startAt = markerAppearStartByKey.get(displayKey);
-
-  if (startAt == null && isNewFeature) {
-    startAt = now;
-    markerAppearStartByKey.set(displayKey, startAt);
-  }
-
-  if (startAt == null) {
-    return {
-      opacity: 1,
-      scale: 1,
-    };
-  }
-
-  const progress = clamp((now - startAt) / MARKER_APPEAR_DURATION_MS, 0, 1);
-  const easedProgress = easeOutCubic(progress);
+  const progress = clamp(
+    (now - animation.startAt) / animation.durationMs,
+    0,
+    1,
+  );
+  const easedProgress = animation.phase === "enter"
+    ? easeOutCubic(progress)
+    : easeInCubic(progress);
+  const targetOpacity = animation.phase === "enter" ? 1 : 0;
+  const targetScale = animation.phase === "enter" ? 1 : 0;
 
   if (progress >= 1) {
-    markerAppearStartByKey.delete(displayKey);
+    markerAnimationByKey.delete(displayKey);
     return {
-      opacity: 1,
-      scale: 1,
+      opacity: targetOpacity,
+      remove: animation.phase === "exit",
+      scale: targetScale,
     };
   }
 
   return {
     opacity:
-      MARKER_APPEAR_START_OPACITY +
-      (1 - MARKER_APPEAR_START_OPACITY) * easedProgress,
+      animation.fromOpacity +
+      (targetOpacity - animation.fromOpacity) * easedProgress,
+    remove: false,
     scale:
-      MARKER_APPEAR_START_SCALE +
-      (1 - MARKER_APPEAR_START_SCALE) * easedProgress,
+      animation.fromScale +
+      (targetScale - animation.fromScale) * easedProgress,
   };
 };
 
-const scheduleMarkerAppearAnimation = () => {
+const withMarkerFrame = (
+  feature: DisplayPointFeature,
+  frame: MarkerAnimationFrame,
+): DisplayPointFeature => ({
+  ...feature,
+  properties: {
+    ...feature.properties,
+    marker_opacity: frame.opacity,
+    marker_scale: frame.scale,
+  },
+});
+
+const scheduleMarkerAnimation = () => {
   if (
     !import.meta.client ||
-    markerAppearAnimationFrame !== null ||
-    !markerAppearStartByKey.size
+    markerAnimationFrame !== null ||
+    !markerAnimationByKey.size
   ) {
     return;
   }
 
-  markerAppearAnimationFrame = window.requestAnimationFrame(() => {
-    markerAppearAnimationFrame = null;
+  markerAnimationFrame = window.requestAnimationFrame(() => {
+    markerAnimationFrame = null;
 
-    if (
-      !mapRef.value ||
-      !displayCollection.value.features.length ||
-      !markerAppearStartByKey.size
-    ) {
+    if (!mapRef.value || !displayCollection.value.features.length) {
+      markerAnimationByKey.clear();
       return;
     }
 
     const now = performance.now();
-    let hasActiveAnimation = false;
     let hasFeatureChange = false;
-    const nextFeatures = displayCollection.value.features.map((feature) => {
+    const renderedKeys = new Set<string>();
+    const nextFeatures: DisplayPointFeature[] = [];
+
+    for (const feature of displayCollection.value.features) {
       const displayKey = getDisplayFeatureKey(feature);
 
       if (!displayKey) {
-        return feature;
+        nextFeatures.push(feature);
+        continue;
       }
 
-      const nextState = getMarkerAppearState(displayKey, now, false);
-      if (nextState.scale < 1 || nextState.opacity < 1) {
-        hasActiveAnimation = true;
+      renderedKeys.add(displayKey);
+      const nextFrame = getMarkerAnimationFrame(displayKey, now);
+
+      if (nextFrame.remove) {
+        hasFeatureChange = true;
+        continue;
       }
 
       if (
-        feature.properties?.marker_scale === nextState.scale &&
-        feature.properties?.marker_opacity === nextState.opacity
+        feature.properties?.marker_scale === nextFrame.scale &&
+        feature.properties?.marker_opacity === nextFrame.opacity
       ) {
-        return feature;
+        nextFeatures.push(feature);
+        continue;
       }
 
       hasFeatureChange = true;
-      return {
-        ...feature,
-        properties: {
-          ...feature.properties,
-          marker_opacity: nextState.opacity,
-          marker_scale: nextState.scale,
-        },
-      };
-    });
+      nextFeatures.push(withMarkerFrame(feature, nextFrame));
+    }
+
+    for (const displayKey of [...markerAnimationByKey.keys()]) {
+      if (!renderedKeys.has(displayKey)) {
+        markerAnimationByKey.delete(displayKey);
+      }
+    }
 
     if (hasFeatureChange) {
       displayCollection.value = {
@@ -608,8 +682,8 @@ const scheduleMarkerAppearAnimation = () => {
       source?.setData(displayCollection.value);
     }
 
-    if (hasActiveAnimation) {
-      scheduleMarkerAppearAnimation();
+    if (markerAnimationByKey.size) {
+      scheduleMarkerAnimation();
     }
   });
 };
@@ -867,12 +941,24 @@ const buildRegionHighlightCollection = (
   };
 };
 
-const fetchGeoJson = async (signal?: AbortSignal) => {
-  return await $fetch<PublicMapPointCollection>("/api/map/posts", {
+const fetchGeoJsonPage = async (
+  afterId: number,
+  characterSlugs: string[],
+  signal?: AbortSignal,
+) => {
+  const query: { afterId?: number; characters?: string } = {};
+
+  if (afterId > 0) {
+    query.afterId = afterId;
+  }
+
+  if (characterSlugs.length) {
+    query.characters = characterSlugs.join(",");
+  }
+
+  return await $fetch<PublicMapPointPage>("/api/map/posts", {
     signal,
-    query: selectedCharacterSlugs.value.length
-      ? { characters: selectedCharacterSlugs.value.join(",") }
-      : undefined,
+    query,
   });
 };
 
@@ -1444,20 +1530,48 @@ const syncDisplaySource = () => {
   const previousDisplayKeys = displayFeatureKeys;
   const nextDisplayKeys = new Set<string>();
   const now = import.meta.client ? performance.now() : 0;
+  const previousFeatureByKey = new Map<string, DisplayPointFeature>();
   const nextDisplayCollection: DisplayPointCollection = {
     type: "FeatureCollection",
     features: [],
   };
   const nextClusterStateByKey = new Map<string, DisplayClusterState>();
 
-  if (!visibleMembers.length) {
-    displayCollection.value = nextDisplayCollection;
-    displayClusterStateByKey = nextClusterStateByKey;
-    const source = mapRef.value.getSource("posts") as GeoJSONSource | null;
-    source?.setData(nextDisplayCollection);
-    closeActivePreview();
-    return;
+  for (const feature of displayCollection.value.features) {
+    const displayKey = getDisplayFeatureKey(feature);
+
+    if (displayKey) {
+      previousFeatureByKey.set(displayKey, feature);
+    }
   }
+
+  const prepareDesiredFeature = (
+    feature: DisplayPointFeature,
+    displayKey: string,
+  ) => {
+    const previousFeature = previousFeatureByKey.get(displayKey);
+    const currentAnimation = markerAnimationByKey.get(displayKey);
+
+    if (currentAnimation?.phase === "exit" && previousFeature) {
+      startMarkerAnimation(
+        displayKey,
+        "enter",
+        now,
+        getFeatureMarkerFrame(previousFeature),
+      );
+    } else if (!previousDisplayKeys.has(displayKey) && !currentAnimation) {
+      startMarkerAnimation(displayKey, "enter", now, {
+        opacity: MARKER_ENTER_START_OPACITY,
+        remove: false,
+        scale: 0,
+      });
+    }
+
+    return withMarkerFrame(
+      feature,
+      getMarkerAnimationFrame(displayKey, now),
+    );
+  };
 
   const filterUserId = props.filterUserId?.trim() || "";
   const displayedMembers = filterUserId
@@ -1477,64 +1591,90 @@ const syncDisplaySource = () => {
 
       const baseFeature = member.feature;
       const displayKey = `post:${member.id}`;
-      const markerState = getMarkerAppearState(
-        displayKey,
-        now,
-        !previousDisplayKeys.has(displayKey),
-      );
       nextDisplayKeys.add(displayKey);
-      nextDisplayCollection.features.push({
-        ...baseFeature,
-        properties: {
-          ...baseFeature.properties,
-          display_key: displayKey,
-          marker_opacity: markerState.opacity,
-          marker_scale: markerState.scale,
-        },
-      });
+      nextDisplayCollection.features.push(
+        prepareDesiredFeature(
+          {
+            ...baseFeature,
+            properties: {
+              ...baseFeature.properties,
+              display_key: displayKey,
+            },
+          },
+          displayKey,
+        ),
+      );
       continue;
     }
 
     const clusterState = buildClusterState(group);
     const displayKey = `cluster:${clusterState.key}`;
-    const markerState = getMarkerAppearState(
-      displayKey,
-      now,
-      !previousDisplayKeys.has(displayKey),
-    );
     nextDisplayKeys.add(displayKey);
     nextClusterStateByKey.set(clusterState.key, clusterState);
-    nextDisplayCollection.features.push({
-      type: "Feature",
-      geometry: {
-        type: "Point",
-        coordinates: clusterState.center,
-      },
-      properties: {
-        display_key: displayKey,
-        cluster_group_id: clusterState.key,
-        cluster_mode: "preview" as const,
-        marker_opacity: markerState.opacity,
-        marker_scale: markerState.scale,
-        point_count: clusterState.memberIds.length,
-        point_count_abbreviated: formatClusterCount(
-          clusterState.memberIds.length,
-        ),
-      },
-    });
+    nextDisplayCollection.features.push(
+      prepareDesiredFeature(
+        {
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: clusterState.center,
+          },
+          properties: {
+            display_key: displayKey,
+            cluster_group_id: clusterState.key,
+            cluster_mode: "preview" as const,
+            point_count: clusterState.memberIds.length,
+            point_count_abbreviated: formatClusterCount(
+              clusterState.memberIds.length,
+            ),
+          },
+        },
+        displayKey,
+      ),
+    );
   }
 
+  const exitingFeatures: DisplayPointFeature[] = [];
+
+  for (const [displayKey, feature] of previousFeatureByKey) {
+    if (nextDisplayKeys.has(displayKey)) {
+      continue;
+    }
+
+    const currentAnimation = markerAnimationByKey.get(displayKey);
+
+    if (
+      previousDisplayKeys.has(displayKey) &&
+      currentAnimation?.phase !== "exit"
+    ) {
+      startMarkerAnimation(
+        displayKey,
+        "exit",
+        now,
+        getFeatureMarkerFrame(feature),
+      );
+    }
+
+    if (markerAnimationByKey.get(displayKey)?.phase !== "exit") {
+      continue;
+    }
+
+    const exitFrame = getMarkerAnimationFrame(displayKey, now);
+    if (!exitFrame.remove) {
+      exitingFeatures.push(withMarkerFrame(feature, exitFrame));
+    }
+  }
+
+  nextDisplayCollection.features = [
+    ...exitingFeatures,
+    ...nextDisplayCollection.features,
+  ];
   displayCollection.value = nextDisplayCollection;
   displayClusterStateByKey = nextClusterStateByKey;
   displayFeatureKeys = nextDisplayKeys;
-  for (const displayKey of [...markerAppearStartByKey.keys()]) {
-    if (!nextDisplayKeys.has(displayKey)) {
-      markerAppearStartByKey.delete(displayKey);
-    }
-  }
   const source = mapRef.value.getSource("posts") as GeoJSONSource | null;
   source?.setData(nextDisplayCollection);
-  scheduleMarkerAppearAnimation();
+  scheduleMarkerAnimation();
 
   if (!activePreviewGroupKey.value || !activePreviewMemberIds.value.length) {
     return;
@@ -1591,30 +1731,93 @@ const refreshSource = async (
   mapPostsAbortController?.abort();
   const abortController = new AbortController();
   mapPostsAbortController = abortController;
+  const characterSlugs = [...selectedCharacterSlugs.value];
+  const queryKey = characterSlugs.join(",");
+  const mergeWithExisting = collectionQueryKey === queryKey;
+  const existingFeatureById = new Map<number, RawPointFeature>();
+  const receivedFeatures: RawPointFeature[] = [];
+  let afterId = 0;
+  let appliedFirstPage = false;
+
+  if (mergeWithExisting) {
+    for (const feature of collection.value.features) {
+      const postId = getFeaturePostId(feature.properties);
+      if (postId) {
+        existingFeatureById.set(postId, feature);
+      }
+    }
+  }
 
   if (!options.loadingStarted) {
     startMapLoading();
   }
 
   try {
-    const geojson = await fetchGeoJson(abortController.signal);
-    const nextCollection = geojson || emptyCollection;
+    while (true) {
+      const page = await fetchGeoJsonPage(
+        afterId,
+        characterSlugs,
+        abortController.signal,
+      );
 
-    if (
-      currentSequence !== refreshSourceSequence ||
-      abortController.signal.aborted ||
-      !mapRef.value
-    ) {
-      return;
+      if (
+        currentSequence !== refreshSourceSequence ||
+        abortController.signal.aborted ||
+        !mapRef.value
+      ) {
+        return;
+      }
+
+      const nextAfterId = page.nextAfterId;
+      if (
+        nextAfterId !== null &&
+        (!Number.isSafeInteger(nextAfterId) || nextAfterId <= afterId)
+      ) {
+        throw new Error("Map post cursor did not advance.");
+      }
+
+      receivedFeatures.push(...page.features);
+      const isLastPage = nextAfterId === null;
+      let nextFeatures = [...receivedFeatures];
+
+      if (mergeWithExisting && !isLastPage) {
+        const mergedFeatureById = new Map(existingFeatureById);
+        for (const feature of receivedFeatures) {
+          const postId = getFeaturePostId(feature.properties);
+          if (postId) {
+            mergedFeatureById.set(postId, feature);
+          }
+        }
+        nextFeatures = [...mergedFeatureById.values()].sort((left, right) => {
+          const leftPostId = getFeaturePostId(left.properties) || 0;
+          const rightPostId = getFeaturePostId(right.properties) || 0;
+          return leftPostId - rightPostId;
+        });
+      }
+
+      collection.value = {
+        type: "FeatureCollection",
+        features: nextFeatures,
+      };
+
+      if (!appliedFirstPage) {
+        appliedFirstPage = true;
+        collectionQueryKey = queryKey;
+        previewGroupCache.clear();
+        pointHoverPreviewCache.clear();
+      }
+
+      closeActivePreview();
+      syncSelectionSource();
+      syncDisplaySource();
+
+      if (nextAfterId === null) {
+        lastMapSourceLoadedAt = Date.now();
+        break;
+      }
+
+      afterId = nextAfterId;
     }
-
-    collection.value = nextCollection;
-    lastMapSourceLoadedAt = Date.now();
-    previewGroupCache.clear();
-    pointHoverPreviewCache.clear();
-    closeActivePreview();
-    syncSelectionSource();
-    syncDisplaySource();
   } catch (error) {
     if (isAbortError(error)) {
       return;
@@ -1716,17 +1919,29 @@ const ensurePostLayers = () => {
       filter: ["has", "point_count"],
       paint: {
         "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            POINT_MARKER_RADIUS_ZOOM_MIN,
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          POINT_MARKER_RADIUS_ZOOM_MIN,
+          [
+            "*",
             POINT_MARKER_MIN_RADIUS_PX,
-            POINT_MARKER_RADIUS_ZOOM_MAX,
-            POINT_MARKER_FILL_RADIUS_PX,
+            ["coalesce", ["get", "marker_scale"], 1],
           ],
+          POINT_MARKER_RADIUS_ZOOM_MAX,
+          [
+            "*",
+            POINT_MARKER_FILL_RADIUS_PX,
+            ["coalesce", ["get", "marker_scale"], 1],
+          ],
+        ],
         "circle-color": primaryColor,
         "circle-opacity": ["coalesce", ["get", "marker_opacity"], 1],
-        "circle-stroke-width": CLUSTER_BUBBLE_STROKE_WIDTH_PX,
+        "circle-stroke-width": [
+          "*",
+          CLUSTER_BUBBLE_STROKE_WIDTH_PX,
+          ["coalesce", ["get", "marker_scale"], 1],
+        ],
         "circle-stroke-color": contrastColor,
         "circle-stroke-opacity": ["coalesce", ["get", "marker_opacity"], 1],
       },
@@ -1759,17 +1974,29 @@ const ensurePostLayers = () => {
       filter: ["!", ["has", "point_count"]],
       paint: {
         "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            POINT_MARKER_RADIUS_ZOOM_MIN,
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          POINT_MARKER_RADIUS_ZOOM_MIN,
+          [
+            "*",
             POINT_MARKER_MIN_RADIUS_PX,
-            POINT_MARKER_RADIUS_ZOOM_MAX,
-            POINT_MARKER_FILL_RADIUS_PX,
+            ["coalesce", ["get", "marker_scale"], 1],
           ],
+          POINT_MARKER_RADIUS_ZOOM_MAX,
+          [
+            "*",
+            POINT_MARKER_FILL_RADIUS_PX,
+            ["coalesce", ["get", "marker_scale"], 1],
+          ],
+        ],
         "circle-color": primaryColor,
         "circle-opacity": ["coalesce", ["get", "marker_opacity"], 1],
-        "circle-stroke-width": CLUSTER_BUBBLE_STROKE_WIDTH_PX,
+        "circle-stroke-width": [
+          "*",
+          CLUSTER_BUBBLE_STROKE_WIDTH_PX,
+          ["coalesce", ["get", "marker_scale"], 1],
+        ],
         "circle-stroke-color": contrastColor,
         "circle-stroke-opacity": ["coalesce", ["get", "marker_opacity"], 1],
       },
@@ -2709,10 +2936,11 @@ onBeforeUnmount(() => {
     window.cancelAnimationFrame(mapDisplaySyncFrame);
     mapDisplaySyncFrame = null;
   }
-  if (markerAppearAnimationFrame !== null) {
-    window.cancelAnimationFrame(markerAppearAnimationFrame);
-    markerAppearAnimationFrame = null;
+  if (markerAnimationFrame !== null) {
+    window.cancelAnimationFrame(markerAnimationFrame);
+    markerAnimationFrame = null;
   }
+  markerAnimationByKey.clear();
   clearBaseMapHealthCheckTimer();
   clearBaseMapRecoveryTimer();
   window.removeEventListener("focus", scheduleVisibleMapSourceRefresh);

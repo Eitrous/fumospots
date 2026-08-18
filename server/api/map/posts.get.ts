@@ -1,5 +1,5 @@
 import { getQuery, type H3Event } from 'h3'
-import type { PublicMapPointCollection } from '~~/shared/fumo'
+import type { PublicMapPointPage } from '~~/shared/fumo'
 import { setPublicApiCacheControl } from '~~/server/utils/cacheControl'
 import { createPublicServerClient } from '~~/server/utils/supabase'
 import { enforceRateLimit, getRateLimitIdentifier } from '~~/server/utils/rateLimit'
@@ -11,9 +11,36 @@ type MapPostRow = {
   user_id?: string | null
 }
 
-const MAP_POSTS_PAGE_SIZE = 1000
+const MAP_POSTS_BATCH_SIZE = 500
 const MAP_POST_OWNER_BATCH_SIZE = 500
 const CHARACTER_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+const parseAfterId = (value: unknown) => {
+  if (value == null) {
+    return 0
+  }
+
+  const rawValue = typeof value === 'number' ? String(value) : value
+  if (
+    typeof rawValue !== 'string'
+    || !/^\d+$/.test(rawValue)
+  ) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Map post cursor is invalid.'
+    })
+  }
+
+  const afterId = Number(rawValue)
+  if (!Number.isSafeInteger(afterId) || afterId < 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Map post cursor is invalid.'
+    })
+  }
+
+  return afterId
+}
 
 const parseCharacterSlugs = (value: unknown) => {
   const values = Array.isArray(value) ? value : [value]
@@ -32,54 +59,52 @@ const parseCharacterSlugs = (value: unknown) => {
   return slugs
 }
 
-const fetchMapPosts = async (event: H3Event, characterSlugs: string[]) => {
+const fetchMapPosts = async (
+  event: H3Event,
+  characterSlugs: string[],
+  afterId: number
+) => {
   const supabase = createPublicServerClient(event)
-  const rows: MapPostRow[] = []
+  const result = characterSlugs.length
+    ? await supabase
+        .rpc('get_public_map_posts', {
+          requested_character_slugs: characterSlugs
+        })
+        .gt('id', afterId)
+        .order('id', { ascending: true })
+        .limit(MAP_POSTS_BATCH_SIZE + 1)
+    : await supabase
+        .from('public_approved_posts')
+        .select(`
+          id,
+          user_id,
+          public_lat,
+          public_lng
+        `)
+        .not('public_lat', 'is', null)
+        .not('public_lng', 'is', null)
+        .gt('id', afterId)
+        .order('id', { ascending: true })
+        .limit(MAP_POSTS_BATCH_SIZE + 1)
 
-  while (true) {
-    const from = rows.length
-    const to = from + MAP_POSTS_PAGE_SIZE - 1
-    const result = characterSlugs.length
-      ? await supabase
-          .rpc('get_public_map_posts', {
-            requested_character_slugs: characterSlugs
-          })
-          .range(from, to)
-      : await supabase
-          .from('public_approved_posts')
-          .select(`
-            id,
-            user_id,
-            public_lat,
-            public_lng
-          `)
-          .not('public_lat', 'is', null)
-          .not('public_lng', 'is', null)
-          .order('id', { ascending: true })
-          .range(from, to)
+  const { data, error } = result
 
-    const { data, error } = result
-
-    if (error) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: error.message
-      })
-    }
-
-    const page = (data || []) as MapPostRow[]
-    rows.push(...page)
-
-    if (page.length < MAP_POSTS_PAGE_SIZE) {
-      break
-    }
+  if (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: error.message
+    })
   }
+
+  const rows = (data || []) as MapPostRow[]
+  const hasNextPage = rows.length > MAP_POSTS_BATCH_SIZE
+  const pageRows = rows.slice(0, MAP_POSTS_BATCH_SIZE)
 
   const ownerByPostId = new Map<number, string>()
 
   if (characterSlugs.length) {
-    for (let index = 0; index < rows.length; index += MAP_POST_OWNER_BATCH_SIZE) {
-      const postIds = rows
+    for (let index = 0; index < pageRows.length; index += MAP_POST_OWNER_BATCH_SIZE) {
+      const postIds = pageRows
         .slice(index, index + MAP_POST_OWNER_BATCH_SIZE)
         .map(row => row.id)
       const { data, error } = await supabase
@@ -100,7 +125,7 @@ const fetchMapPosts = async (event: H3Event, characterSlugs: string[]) => {
     }
   }
 
-  const features = rows.map((row) => ({
+  const features = pageRows.map((row) => ({
     type: 'Feature',
     geometry: {
       type: 'Point',
@@ -110,19 +135,26 @@ const fetchMapPosts = async (event: H3Event, characterSlugs: string[]) => {
       id: row.id,
       userId: row.user_id || ownerByPostId.get(row.id) || ''
     }
-  })) satisfies PublicMapPointCollection['features']
+  })) satisfies PublicMapPointPage['features']
+
+  const nextAfterId = hasNextPage
+    ? pageRows.at(-1)?.id ?? null
+    : null
 
   return {
     type: 'FeatureCollection',
-    features
-  } satisfies PublicMapPointCollection
+    features,
+    nextAfterId
+  } satisfies PublicMapPointPage
 }
 
 export default defineEventHandler(async (event) => {
   await enforceRateLimit(event, 'mapIp', getRateLimitIdentifier(event))
 
-  const characterSlugs = parseCharacterSlugs(getQuery(event).characters)
-  const response = await fetchMapPosts(event, characterSlugs)
+  const query = getQuery(event)
+  const characterSlugs = parseCharacterSlugs(query.characters)
+  const afterId = parseAfterId(query.afterId)
+  const response = await fetchMapPosts(event, characterSlugs, afterId)
 
   setPublicApiCacheControl(event)
 
