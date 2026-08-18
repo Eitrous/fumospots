@@ -10,6 +10,7 @@ import type {
 import type {
   GeoBounds,
   PublicMapPointCollection,
+  PublicMapPointPage,
   PublicMapPreviewItem,
   PublicMapPreviewResponse,
   RegionScope,
@@ -407,6 +408,7 @@ let previewSheetPointerStartY = 0;
 let previewOpenedAt = 0;
 let pointHoverPreviewTimer: number | null = null;
 let pointHoverPreviewAbortController: AbortController | null = null;
+let collectionQueryKey: string | null = null;
 let displayClusterStateByKey = new Map<string, DisplayClusterState>();
 let displayFeatureKeys = new Set<string>();
 const markerAnimationByKey = new Map<string, MarkerAnimationState>();
@@ -939,12 +941,24 @@ const buildRegionHighlightCollection = (
   };
 };
 
-const fetchGeoJson = async (signal?: AbortSignal) => {
-  return await $fetch<PublicMapPointCollection>("/api/map/posts", {
+const fetchGeoJsonPage = async (
+  afterId: number,
+  characterSlugs: string[],
+  signal?: AbortSignal,
+) => {
+  const query: { afterId?: number; characters?: string } = {};
+
+  if (afterId > 0) {
+    query.afterId = afterId;
+  }
+
+  if (characterSlugs.length) {
+    query.characters = characterSlugs.join(",");
+  }
+
+  return await $fetch<PublicMapPointPage>("/api/map/posts", {
     signal,
-    query: selectedCharacterSlugs.value.length
-      ? { characters: selectedCharacterSlugs.value.join(",") }
-      : undefined,
+    query,
   });
 };
 
@@ -1717,30 +1731,93 @@ const refreshSource = async (
   mapPostsAbortController?.abort();
   const abortController = new AbortController();
   mapPostsAbortController = abortController;
+  const characterSlugs = [...selectedCharacterSlugs.value];
+  const queryKey = characterSlugs.join(",");
+  const mergeWithExisting = collectionQueryKey === queryKey;
+  const existingFeatureById = new Map<number, RawPointFeature>();
+  const receivedFeatures: RawPointFeature[] = [];
+  let afterId = 0;
+  let appliedFirstPage = false;
+
+  if (mergeWithExisting) {
+    for (const feature of collection.value.features) {
+      const postId = getFeaturePostId(feature.properties);
+      if (postId) {
+        existingFeatureById.set(postId, feature);
+      }
+    }
+  }
 
   if (!options.loadingStarted) {
     startMapLoading();
   }
 
   try {
-    const geojson = await fetchGeoJson(abortController.signal);
-    const nextCollection = geojson || emptyCollection;
+    while (true) {
+      const page = await fetchGeoJsonPage(
+        afterId,
+        characterSlugs,
+        abortController.signal,
+      );
 
-    if (
-      currentSequence !== refreshSourceSequence ||
-      abortController.signal.aborted ||
-      !mapRef.value
-    ) {
-      return;
+      if (
+        currentSequence !== refreshSourceSequence ||
+        abortController.signal.aborted ||
+        !mapRef.value
+      ) {
+        return;
+      }
+
+      const nextAfterId = page.nextAfterId;
+      if (
+        nextAfterId !== null &&
+        (!Number.isSafeInteger(nextAfterId) || nextAfterId <= afterId)
+      ) {
+        throw new Error("Map post cursor did not advance.");
+      }
+
+      receivedFeatures.push(...page.features);
+      const isLastPage = nextAfterId === null;
+      let nextFeatures = [...receivedFeatures];
+
+      if (mergeWithExisting && !isLastPage) {
+        const mergedFeatureById = new Map(existingFeatureById);
+        for (const feature of receivedFeatures) {
+          const postId = getFeaturePostId(feature.properties);
+          if (postId) {
+            mergedFeatureById.set(postId, feature);
+          }
+        }
+        nextFeatures = [...mergedFeatureById.values()].sort((left, right) => {
+          const leftPostId = getFeaturePostId(left.properties) || 0;
+          const rightPostId = getFeaturePostId(right.properties) || 0;
+          return leftPostId - rightPostId;
+        });
+      }
+
+      collection.value = {
+        type: "FeatureCollection",
+        features: nextFeatures,
+      };
+
+      if (!appliedFirstPage) {
+        appliedFirstPage = true;
+        collectionQueryKey = queryKey;
+        previewGroupCache.clear();
+        pointHoverPreviewCache.clear();
+      }
+
+      closeActivePreview();
+      syncSelectionSource();
+      syncDisplaySource();
+
+      if (nextAfterId === null) {
+        lastMapSourceLoadedAt = Date.now();
+        break;
+      }
+
+      afterId = nextAfterId;
     }
-
-    collection.value = nextCollection;
-    lastMapSourceLoadedAt = Date.now();
-    previewGroupCache.clear();
-    pointHoverPreviewCache.clear();
-    closeActivePreview();
-    syncSelectionSource();
-    syncDisplaySource();
   } catch (error) {
     if (isAbortError(error)) {
       return;
