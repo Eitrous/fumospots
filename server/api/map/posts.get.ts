@@ -15,7 +15,7 @@ const MAP_POSTS_BATCH_SIZE = 500
 const MAP_POST_OWNER_BATCH_SIZE = 500
 const CHARACTER_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-const parseAfterId = (value: unknown) => {
+const parsePostId = (value: unknown) => {
   if (value == null) {
     return 0
   }
@@ -62,15 +62,38 @@ const parseCharacterSlugs = (value: unknown) => {
 const fetchMapPosts = async (
   event: H3Event,
   characterSlugs: string[],
-  afterId: number
+  afterId: number,
+  requestedThroughId?: number
 ) => {
   const supabase = createPublicServerClient(event)
+  let throughId = requestedThroughId
+
+  if (throughId === undefined) {
+    const { data, error } = await supabase
+      .from('public_approved_posts')
+      .select('id')
+      .not('public_lat', 'is', null)
+      .not('public_lng', 'is', null)
+      .order('id', { ascending: false })
+      .limit(1)
+
+    if (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: error.message
+      })
+    }
+
+    throughId = Number(data?.[0]?.id ?? 0)
+  }
+
   const result = characterSlugs.length
     ? await supabase
         .rpc('get_public_map_posts', {
           requested_character_slugs: characterSlugs
         })
         .gt('id', afterId)
+        .lte('id', throughId)
         .order('id', { ascending: true })
         .limit(MAP_POSTS_BATCH_SIZE + 1)
     : await supabase
@@ -84,6 +107,7 @@ const fetchMapPosts = async (
         .not('public_lat', 'is', null)
         .not('public_lng', 'is', null)
         .gt('id', afterId)
+        .lte('id', throughId)
         .order('id', { ascending: true })
         .limit(MAP_POSTS_BATCH_SIZE + 1)
 
@@ -144,7 +168,8 @@ const fetchMapPosts = async (
   return {
     type: 'FeatureCollection',
     features,
-    nextAfterId
+    nextAfterId,
+    throughId
   } satisfies PublicMapPointPage
 }
 
@@ -153,8 +178,9 @@ export default defineEventHandler(async (event) => {
 
   const query = getQuery(event)
   const characterSlugs = parseCharacterSlugs(query.characters)
-  const afterId = parseAfterId(query.afterId)
-  const response = await fetchMapPosts(event, characterSlugs, afterId)
+  const afterId = parsePostId(query.afterId)
+  const throughId = query.throughId == null ? undefined : parsePostId(query.throughId)
+  const response = await fetchMapPosts(event, characterSlugs, afterId, throughId)
 
   setPublicApiCacheControl(event)
 

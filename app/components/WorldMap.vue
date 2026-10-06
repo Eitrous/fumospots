@@ -163,6 +163,7 @@ const POST_MARKER_LAYERS: [string, string] = [
 ];
 const MAP_SOURCE_FOCUS_REFRESH_DEBOUNCE_MS = 250;
 const MAP_SOURCE_FRESHNESS_MS = 60_000;
+const MAP_POSTS_CONCURRENCY = 4;
 const POINT_MARKER_MIN_RADIUS_PX = 2.5;
 const POINT_MARKER_RADIUS_ZOOM_MIN = 2;
 const POINT_MARKER_RADIUS_ZOOM_MAX = 12;
@@ -393,6 +394,8 @@ let pendingRegionFitKey: string | null = null;
 let mapInteractionsBound = false;
 let initialSourceLoaded = false;
 let initialSourceLoadScheduled = false;
+let mapDisposed = false;
+let mapStyleReady = false;
 let lastMapSourceLoadedAt = 0;
 let mapPostsAbortController: AbortController | null = null;
 let visibleMapSourceRefreshPromise: Promise<void> | null = null;
@@ -401,6 +404,7 @@ let mapResizeObserver: ResizeObserver | null = null;
 let mapResizeFrame: number | null = null;
 let mapRuntimeSyncFrame: number | null = null;
 let mapDisplaySyncFrame: number | null = null;
+let suppressNextMarkerAnimations = false;
 let markerAnimationFrame: number | null = null;
 let baseMapHealthCheckTimer: number | null = null;
 let baseMapRecoveryTimer: number | null = null;
@@ -828,6 +832,7 @@ const clearBaseMapRecoveryTimer = () => {
 const prepareBaseMapForStyleLoad = (
   options: { resetAttempts?: boolean } = {},
 ) => {
+  mapStyleReady = false;
   baseMapReady = false;
   resetBaseMapTileLoading();
   clearBaseMapHealthCheckTimer();
@@ -952,11 +957,14 @@ const fetchGeoJsonPage = async (
   afterId: number,
   characterSlugs: string[],
   signal?: AbortSignal,
+  throughId?: number,
 ) => {
-  const query: { afterId?: number; characters?: string } = {};
+  const query: { afterId: number; throughId?: number; characters?: string } = {
+    afterId,
+  };
 
-  if (afterId > 0) {
-    query.afterId = afterId;
+  if (throughId !== undefined) {
+    query.throughId = throughId;
   }
 
   if (characterSlugs.length) {
@@ -1528,9 +1536,14 @@ const buildClusterState = (
   };
 };
 
-const syncDisplaySource = () => {
-  if (!mapRef.value) {
+const syncDisplaySource = (options: { animate?: boolean } = {}) => {
+  if (!mapRef.value?.getSource("posts")) {
     return;
+  }
+
+  const animate = options.animate !== false;
+  if (!animate) {
+    markerAnimationByKey.clear();
   }
 
   const visibleMembers = collectVisiblePointMembers();
@@ -1556,6 +1569,10 @@ const syncDisplaySource = () => {
     feature: DisplayPointFeature,
     displayKey: string,
   ) => {
+    if (!animate) {
+      return withMarkerFrame(feature, { opacity: 1, remove: false, scale: 1 });
+    }
+
     const previousFeature = previousFeatureByKey.get(displayKey);
     const currentAnimation = markerAnimationByKey.get(displayKey);
 
@@ -1661,7 +1678,7 @@ const syncDisplaySource = () => {
   const exitingFeatures: DisplayPointFeature[] = [];
 
   for (const [displayKey, feature] of previousFeatureByKey) {
-    if (nextDisplayKeys.has(displayKey)) {
+    if (!animate || nextDisplayKeys.has(displayKey)) {
       continue;
     }
 
@@ -1723,22 +1740,13 @@ const syncDisplaySource = () => {
     return;
   }
 
+  const anchorPostId = activePreviewMemberIds.value[0];
   const fallbackCluster = [...displayClusterStateByKey.values()].find(
-    (clusterState) => {
-      if (
-        clusterState.memberIds.length !== activePreviewMemberIds.value.length
-      ) {
-        return false;
-      }
-
-      return clusterState.memberIds.every((memberId, index) => {
-        return memberId === activePreviewMemberIds.value[index];
-      });
-    },
+    (clusterState) => clusterState.memberIds.some(memberId => memberId === anchorPostId),
   );
 
   if (fallbackCluster) {
-    activePreviewGroupKey.value = fallbackCluster.key;
+    // Keep the opened member snapshot and key valid for in-flight preview requests.
     activePreviewAnchor.value = fallbackCluster.screenPoint;
   }
 };
@@ -1750,18 +1758,18 @@ const scheduleDisplaySourceSync = () => {
 
   mapDisplaySyncFrame = window.requestAnimationFrame(() => {
     mapDisplaySyncFrame = null;
-    syncDisplaySource();
+    const animate = !suppressNextMarkerAnimations;
+    suppressNextMarkerAnimations = false;
+    syncSelectionSource();
+    syncDisplaySource({ animate });
   });
 };
 
-const refreshSource = async (
-  options: { loadingStarted?: boolean } = {},
-) => {
-  if (!mapRef.value) {
+const refreshSource = async () => {
+  if (mapDisposed) {
     return;
   }
 
-  closePointHoverPreview();
   const currentSequence = ++refreshSourceSequence;
   mapPostsAbortController?.abort();
   const abortController = new AbortController();
@@ -1769,9 +1777,11 @@ const refreshSource = async (
   const characterSlugs = [...selectedCharacterSlugs.value];
   const queryKey = characterSlugs.join(",");
   const mergeWithExisting = collectionQueryKey === queryKey;
+  if (!mergeWithExisting) {
+    closeMapPreviews();
+  }
   const existingFeatureById = new Map<number, RawPointFeature>();
-  const receivedFeatures: RawPointFeature[] = [];
-  let afterId = 0;
+  const receivedFeatureById = new Map<number, RawPointFeature>();
   let appliedFirstPage = false;
 
   if (mergeWithExisting) {
@@ -1783,77 +1793,112 @@ const refreshSource = async (
     }
   }
 
-  if (!options.loadingStarted) {
-    startMapLoading();
-  }
+  startMapLoading();
+
+  const isCurrentRefresh = () =>
+    currentSequence === refreshSourceSequence &&
+    !abortController.signal.aborted &&
+    !mapDisposed;
+
+  const applyCollection = (complete = false) => {
+    const nextFeatureById = new Map(
+      mergeWithExisting && !complete ? existingFeatureById : [],
+    );
+    for (const [postId, feature] of receivedFeatureById) {
+      nextFeatureById.set(postId, feature);
+    }
+
+    collection.value = {
+      type: "FeatureCollection",
+      features: [...nextFeatureById.values()].sort((left, right) =>
+        left.properties.id - right.properties.id,
+      ),
+    };
+
+    if (!appliedFirstPage) {
+      appliedFirstPage = true;
+      collectionQueryKey = queryKey;
+      previewGroupCache.clear();
+      pointHoverPreviewCache.clear();
+    }
+
+    if (
+      complete &&
+      activePreviewMemberIds.value.some(postId => !receivedFeatureById.has(postId))
+    ) {
+      closeActivePreview();
+    }
+
+    suppressNextMarkerAnimations = true;
+    scheduleDisplaySourceSync();
+  };
+
+  const loadPage = async (afterId: number, throughId?: number) => {
+    const page = await fetchGeoJsonPage(
+      afterId,
+      characterSlugs,
+      abortController.signal,
+      throughId,
+    );
+
+    if (!isCurrentRefresh()) {
+      return null;
+    }
+
+    if (
+      !Number.isSafeInteger(page.throughId) ||
+      page.throughId < afterId ||
+      (throughId !== undefined && page.throughId !== throughId) ||
+      (page.nextAfterId !== null &&
+        (!Number.isSafeInteger(page.nextAfterId) ||
+          page.nextAfterId <= afterId ||
+          page.nextAfterId > page.throughId))
+    ) {
+      throw new Error("Map post page bounds are invalid.");
+    }
+
+    for (const feature of page.features) {
+      receivedFeatureById.set(feature.properties.id, feature);
+    }
+    applyCollection();
+    return page;
+  };
 
   try {
-    while (true) {
-      const page = await fetchGeoJsonPage(
-        afterId,
-        characterSlugs,
-        abortController.signal,
+    const firstPage = await loadPage(0);
+    if (!firstPage) {
+      return;
+    }
+
+    if (firstPage.nextAfterId !== null) {
+      const startId = firstPage.nextAfterId;
+      // ponytail: ID ranges can load unevenly; split dense ranges if profiling warrants it.
+      const rangeSize = Math.ceil(
+        (firstPage.throughId - startId) / MAP_POSTS_CONCURRENCY,
       );
 
-      if (
-        currentSequence !== refreshSourceSequence ||
-        abortController.signal.aborted ||
-        !mapRef.value
-      ) {
-        return;
-      }
+      await Promise.all(
+        Array.from({ length: MAP_POSTS_CONCURRENCY }, async (_, index) => {
+          let afterId = startId + index * rangeSize;
+          const throughId = Math.min(firstPage.throughId, afterId + rangeSize);
 
-      const nextAfterId = page.nextAfterId;
-      if (
-        nextAfterId !== null &&
-        (!Number.isSafeInteger(nextAfterId) || nextAfterId <= afterId)
-      ) {
-        throw new Error("Map post cursor did not advance.");
-      }
-
-      receivedFeatures.push(...page.features);
-      const isLastPage = nextAfterId === null;
-      let nextFeatures = [...receivedFeatures];
-
-      if (mergeWithExisting && !isLastPage) {
-        const mergedFeatureById = new Map(existingFeatureById);
-        for (const feature of receivedFeatures) {
-          const postId = getFeaturePostId(feature.properties);
-          if (postId) {
-            mergedFeatureById.set(postId, feature);
+          while (afterId < throughId && isCurrentRefresh()) {
+            const page = await loadPage(afterId, throughId);
+            if (!page || page.nextAfterId === null) {
+              return;
+            }
+            afterId = page.nextAfterId;
           }
-        }
-        nextFeatures = [...mergedFeatureById.values()].sort((left, right) => {
-          const leftPostId = getFeaturePostId(left.properties) || 0;
-          const rightPostId = getFeaturePostId(right.properties) || 0;
-          return leftPostId - rightPostId;
-        });
-      }
+        }),
+      );
+    }
 
-      collection.value = {
-        type: "FeatureCollection",
-        features: nextFeatures,
-      };
-
-      if (!appliedFirstPage) {
-        appliedFirstPage = true;
-        collectionQueryKey = queryKey;
-        previewGroupCache.clear();
-        pointHoverPreviewCache.clear();
-      }
-
-      closeActivePreview();
-      syncSelectionSource();
-      syncDisplaySource();
-
-      if (nextAfterId === null) {
-        lastMapSourceLoadedAt = Date.now();
-        break;
-      }
-
-      afterId = nextAfterId;
+    if (isCurrentRefresh()) {
+      applyCollection(true);
+      lastMapSourceLoadedAt = Date.now();
     }
   } catch (error) {
+    abortController.abort();
     if (isAbortError(error)) {
       return;
     }
@@ -2431,17 +2476,15 @@ const unbindMapInteractions = () => {
 };
 
 const scheduleInitialSourceLoad = () => {
-  if (!import.meta.client || initialSourceLoadScheduled) {
+  if (!import.meta.client || initialSourceLoadScheduled || mapDisposed) {
     return;
   }
 
   initialSourceLoadScheduled = true;
-  startMapLoading();
-
-  window.requestAnimationFrame(() => {
-    void refreshSource({ loadingStarted: true }).finally(() => {
+  void refreshSource().finally(() => {
+    if (!mapDisposed) {
       initialSourceLoaded = true;
-    });
+    }
   });
 };
 
@@ -2578,6 +2621,7 @@ const handleMapIdle = () => {
 };
 
 const handleMapStyleLoad = () => {
+  mapStyleReady = true;
   scheduleMapRuntimeSync();
   scheduleBaseMapHealthCheck();
 };
@@ -2625,12 +2669,13 @@ const loadRegionHighlight = async (scope: RegionScope | null) => {
 };
 
 const syncMapRuntimeState = () => {
-  if (!mapRef.value || !mapRef.value.isStyleLoaded()) {
+  if (!mapRef.value || (!mapStyleReady && !mapRef.value.isStyleLoaded())) {
     return;
   }
 
   scheduleMapResize();
   setupMapLayers();
+  scheduleDisplaySourceSync();
   bindMapInteractions();
   syncRegionHighlightSource();
   syncSelectionSource();
@@ -2817,11 +2862,16 @@ onMounted(async () => {
   }
 
   updateViewportWidth();
+  scheduleInitialSourceLoad();
   startMapLoading();
   try {
     maplibregl = await import("maplibre-gl");
     await registerPmtilesProtocol(maplibregl);
     const style = await fetchInitialMapStyle();
+
+    if (mapDisposed) {
+      return;
+    }
 
     prepareBaseMapForStyleLoad();
     mapRef.value = new maplibregl.Map({
@@ -2835,11 +2885,11 @@ onMounted(async () => {
     scheduleMapResize();
     scheduleBaseMapHealthCheck();
   } catch {
-    finishMapLoading();
+    mapPostsAbortController?.abort();
     return;
+  } finally {
+    finishMapLoading();
   }
-
-  finishMapLoading();
 
   window.addEventListener("focus", scheduleVisibleMapSourceRefresh);
   window.addEventListener("resize", handleWindowResize);
@@ -2848,7 +2898,7 @@ onMounted(async () => {
     scheduleVisibleMapSourceRefresh,
   );
 
-  mapRef.value.on("load", handleMapStyleLoad);
+  mapRef.value.on("style.load", handleMapStyleLoad);
   mapRef.value.on("styledata", scheduleMapRuntimeSync);
   mapRef.value.on("sourcedataloading", startBaseMapTileLoading);
   mapRef.value.on("sourcedata", handleBaseMapSourceData);
@@ -2861,7 +2911,6 @@ onMounted(async () => {
 
   mapRef.value.on("load", () => {
     scheduleMapRuntimeSync();
-    scheduleInitialSourceLoad();
     scheduleBaseMapHealthCheck();
 
     if (props.selectedPostId) {
@@ -2906,7 +2955,7 @@ watch(
 watch(
   () => selectedCharacterSlugs.value.join(","),
   () => {
-    if (mapRef.value) {
+    if (initialSourceLoadScheduled && !mapDisposed) {
       void refreshSource();
     }
   },
@@ -2941,6 +2990,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  mapDisposed = true;
   mapStyleSequence += 1;
   refreshSourceSequence += 1;
   previewRequestSequence += 1;
@@ -2980,6 +3030,7 @@ onBeforeUnmount(() => {
   );
   unbindMapInteractions();
   mapRef.value?.remove();
+  mapRef.value = null;
 });
 </script>
 
