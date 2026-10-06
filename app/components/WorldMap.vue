@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onClickOutside } from "@vueuse/core";
 import type {
+  CircleLayerSpecification,
+  ExpressionSpecification,
   GeoJSONSource,
   Map as MapLibreMap,
   MapLayerMouseEvent,
@@ -36,12 +38,12 @@ import {
 const props = withDefaults(
   defineProps<{
     selectedPostId?: number | null;
-    filterUserId?: string | null;
+    focusUserId?: string | null;
     highlightRegionScope?: RegionScope | null;
   }>(),
   {
     selectedPostId: null,
-    filterUserId: null,
+    focusUserId: null,
     highlightRegionScope: null,
   },
 );
@@ -61,6 +63,7 @@ type RegionHighlightCollection = GeoJSON.FeatureCollection<
 type DisplayPointProperties = {
   display_key?: string;
   id?: number;
+  focus_strength?: number;
   marker_opacity?: number;
   marker_scale?: number;
   point_count?: number;
@@ -154,8 +157,13 @@ const MARKER_ENTER_DURATION_MS = 320;
 const MARKER_ENTER_START_OPACITY = 0.62;
 const MARKER_EXIT_DURATION_MS = 240;
 const MARKER_ANIMATION_MIN_DURATION_MS = 60;
+const UNFOCUSED_POST_STRENGTH = 0.22;
+const POST_MARKER_LAYERS: [string, string] = [
+  "muted-post-markers", "post-markers",
+];
 const MAP_SOURCE_FOCUS_REFRESH_DEBOUNCE_MS = 250;
 const MAP_SOURCE_FRESHNESS_MS = 60_000;
+const MAP_POSTS_CONCURRENCY = 4;
 const POINT_MARKER_MIN_RADIUS_PX = 2.5;
 const POINT_MARKER_RADIUS_ZOOM_MIN = 2;
 const POINT_MARKER_RADIUS_ZOOM_MAX = 12;
@@ -386,6 +394,8 @@ let pendingRegionFitKey: string | null = null;
 let mapInteractionsBound = false;
 let initialSourceLoaded = false;
 let initialSourceLoadScheduled = false;
+let mapDisposed = false;
+let mapStyleReady = false;
 let lastMapSourceLoadedAt = 0;
 let mapPostsAbortController: AbortController | null = null;
 let visibleMapSourceRefreshPromise: Promise<void> | null = null;
@@ -394,6 +404,7 @@ let mapResizeObserver: ResizeObserver | null = null;
 let mapResizeFrame: number | null = null;
 let mapRuntimeSyncFrame: number | null = null;
 let mapDisplaySyncFrame: number | null = null;
+let suppressNextMarkerAnimations = false;
 let markerAnimationFrame: number | null = null;
 let baseMapHealthCheckTimer: number | null = null;
 let baseMapRecoveryTimer: number | null = null;
@@ -821,6 +832,7 @@ const clearBaseMapRecoveryTimer = () => {
 const prepareBaseMapForStyleLoad = (
   options: { resetAttempts?: boolean } = {},
 ) => {
+  mapStyleReady = false;
   baseMapReady = false;
   resetBaseMapTileLoading();
   clearBaseMapHealthCheckTimer();
@@ -945,11 +957,14 @@ const fetchGeoJsonPage = async (
   afterId: number,
   characterSlugs: string[],
   signal?: AbortSignal,
+  throughId?: number,
 ) => {
-  const query: { afterId?: number; characters?: string } = {};
+  const query: { afterId: number; throughId?: number; characters?: string } = {
+    afterId,
+  };
 
-  if (afterId > 0) {
-    query.afterId = afterId;
+  if (throughId !== undefined) {
+    query.throughId = throughId;
   }
 
   if (characterSlugs.length) {
@@ -1521,9 +1536,14 @@ const buildClusterState = (
   };
 };
 
-const syncDisplaySource = () => {
-  if (!mapRef.value) {
+const syncDisplaySource = (options: { animate?: boolean } = {}) => {
+  if (!mapRef.value?.getSource("posts")) {
     return;
+  }
+
+  const animate = options.animate !== false;
+  if (!animate) {
+    markerAnimationByKey.clear();
   }
 
   const visibleMembers = collectVisiblePointMembers();
@@ -1549,6 +1569,10 @@ const syncDisplaySource = () => {
     feature: DisplayPointFeature,
     displayKey: string,
   ) => {
+    if (!animate) {
+      return withMarkerFrame(feature, { opacity: 1, remove: false, scale: 1 });
+    }
+
     const previousFeature = previousFeatureByKey.get(displayKey);
     const currentAnimation = markerAnimationByKey.get(displayKey);
 
@@ -1573,15 +1597,30 @@ const syncDisplaySource = () => {
     );
   };
 
-  const filterUserId = props.filterUserId?.trim() || "";
-  const displayedMembers = filterUserId
-    ? visibleMembers.filter(
-        (member) => member.feature.properties?.userId === filterUserId,
-      )
-    : visibleMembers;
-  const groups = resolveMaxZoomCollisionGroups(displayedMembers);
+  const focusUserId = props.focusUserId?.trim() || "";
+  // Keep the owner's posts out of dimmed clusters shared with other authors.
+  const groups = focusUserId
+    ? [
+        ...resolveMaxZoomCollisionGroups(
+          visibleMembers.filter(
+            (member) => member.feature.properties.userId !== focusUserId,
+          ),
+        ),
+        ...resolveMaxZoomCollisionGroups(
+          visibleMembers.filter(
+            (member) => member.feature.properties.userId === focusUserId,
+          ),
+        ),
+      ]
+    : resolveMaxZoomCollisionGroups(visibleMembers);
 
   for (const group of groups) {
+    const focusStrength =
+      focusUserId &&
+      group.every((member) => member.feature.properties.userId !== focusUserId)
+        ? UNFOCUSED_POST_STRENGTH
+        : 1;
+
     if (group.length === 1) {
       const member = group[0];
 
@@ -1599,6 +1638,7 @@ const syncDisplaySource = () => {
             properties: {
               ...baseFeature.properties,
               display_key: displayKey,
+              focus_strength: focusStrength,
             },
           },
           displayKey,
@@ -1623,6 +1663,7 @@ const syncDisplaySource = () => {
             display_key: displayKey,
             cluster_group_id: clusterState.key,
             cluster_mode: "preview" as const,
+            focus_strength: focusStrength,
             point_count: clusterState.memberIds.length,
             point_count_abbreviated: formatClusterCount(
               clusterState.memberIds.length,
@@ -1637,7 +1678,7 @@ const syncDisplaySource = () => {
   const exitingFeatures: DisplayPointFeature[] = [];
 
   for (const [displayKey, feature] of previousFeatureByKey) {
-    if (nextDisplayKeys.has(displayKey)) {
+    if (!animate || nextDisplayKeys.has(displayKey)) {
       continue;
     }
 
@@ -1661,7 +1702,18 @@ const syncDisplaySource = () => {
 
     const exitFrame = getMarkerAnimationFrame(displayKey, now);
     if (!exitFrame.remove) {
-      exitingFeatures.push(withMarkerFrame(feature, exitFrame));
+      exitingFeatures.push(
+        withMarkerFrame(
+          {
+            ...feature,
+            properties: {
+              ...feature.properties,
+              focus_strength: focusUserId ? UNFOCUSED_POST_STRENGTH : 1,
+            },
+          },
+          exitFrame,
+        ),
+      );
     }
   }
 
@@ -1688,22 +1740,13 @@ const syncDisplaySource = () => {
     return;
   }
 
+  const anchorPostId = activePreviewMemberIds.value[0];
   const fallbackCluster = [...displayClusterStateByKey.values()].find(
-    (clusterState) => {
-      if (
-        clusterState.memberIds.length !== activePreviewMemberIds.value.length
-      ) {
-        return false;
-      }
-
-      return clusterState.memberIds.every((memberId, index) => {
-        return memberId === activePreviewMemberIds.value[index];
-      });
-    },
+    (clusterState) => clusterState.memberIds.some(memberId => memberId === anchorPostId),
   );
 
   if (fallbackCluster) {
-    activePreviewGroupKey.value = fallbackCluster.key;
+    // Keep the opened member snapshot and key valid for in-flight preview requests.
     activePreviewAnchor.value = fallbackCluster.screenPoint;
   }
 };
@@ -1715,18 +1758,18 @@ const scheduleDisplaySourceSync = () => {
 
   mapDisplaySyncFrame = window.requestAnimationFrame(() => {
     mapDisplaySyncFrame = null;
-    syncDisplaySource();
+    const animate = !suppressNextMarkerAnimations;
+    suppressNextMarkerAnimations = false;
+    syncSelectionSource();
+    syncDisplaySource({ animate });
   });
 };
 
-const refreshSource = async (
-  options: { loadingStarted?: boolean } = {},
-) => {
-  if (!mapRef.value) {
+const refreshSource = async () => {
+  if (mapDisposed) {
     return;
   }
 
-  closePointHoverPreview();
   const currentSequence = ++refreshSourceSequence;
   mapPostsAbortController?.abort();
   const abortController = new AbortController();
@@ -1734,9 +1777,11 @@ const refreshSource = async (
   const characterSlugs = [...selectedCharacterSlugs.value];
   const queryKey = characterSlugs.join(",");
   const mergeWithExisting = collectionQueryKey === queryKey;
+  if (!mergeWithExisting) {
+    closeMapPreviews();
+  }
   const existingFeatureById = new Map<number, RawPointFeature>();
-  const receivedFeatures: RawPointFeature[] = [];
-  let afterId = 0;
+  const receivedFeatureById = new Map<number, RawPointFeature>();
   let appliedFirstPage = false;
 
   if (mergeWithExisting) {
@@ -1748,77 +1793,112 @@ const refreshSource = async (
     }
   }
 
-  if (!options.loadingStarted) {
-    startMapLoading();
-  }
+  startMapLoading();
+
+  const isCurrentRefresh = () =>
+    currentSequence === refreshSourceSequence &&
+    !abortController.signal.aborted &&
+    !mapDisposed;
+
+  const applyCollection = (complete = false) => {
+    const nextFeatureById = new Map(
+      mergeWithExisting && !complete ? existingFeatureById : [],
+    );
+    for (const [postId, feature] of receivedFeatureById) {
+      nextFeatureById.set(postId, feature);
+    }
+
+    collection.value = {
+      type: "FeatureCollection",
+      features: [...nextFeatureById.values()].sort((left, right) =>
+        left.properties.id - right.properties.id,
+      ),
+    };
+
+    if (!appliedFirstPage) {
+      appliedFirstPage = true;
+      collectionQueryKey = queryKey;
+      previewGroupCache.clear();
+      pointHoverPreviewCache.clear();
+    }
+
+    if (
+      complete &&
+      activePreviewMemberIds.value.some(postId => !receivedFeatureById.has(postId))
+    ) {
+      closeActivePreview();
+    }
+
+    suppressNextMarkerAnimations = true;
+    scheduleDisplaySourceSync();
+  };
+
+  const loadPage = async (afterId: number, throughId?: number) => {
+    const page = await fetchGeoJsonPage(
+      afterId,
+      characterSlugs,
+      abortController.signal,
+      throughId,
+    );
+
+    if (!isCurrentRefresh()) {
+      return null;
+    }
+
+    if (
+      !Number.isSafeInteger(page.throughId) ||
+      page.throughId < afterId ||
+      (throughId !== undefined && page.throughId !== throughId) ||
+      (page.nextAfterId !== null &&
+        (!Number.isSafeInteger(page.nextAfterId) ||
+          page.nextAfterId <= afterId ||
+          page.nextAfterId > page.throughId))
+    ) {
+      throw new Error("Map post page bounds are invalid.");
+    }
+
+    for (const feature of page.features) {
+      receivedFeatureById.set(feature.properties.id, feature);
+    }
+    applyCollection();
+    return page;
+  };
 
   try {
-    while (true) {
-      const page = await fetchGeoJsonPage(
-        afterId,
-        characterSlugs,
-        abortController.signal,
+    const firstPage = await loadPage(0);
+    if (!firstPage) {
+      return;
+    }
+
+    if (firstPage.nextAfterId !== null) {
+      const startId = firstPage.nextAfterId;
+      // ponytail: ID ranges can load unevenly; split dense ranges if profiling warrants it.
+      const rangeSize = Math.ceil(
+        (firstPage.throughId - startId) / MAP_POSTS_CONCURRENCY,
       );
 
-      if (
-        currentSequence !== refreshSourceSequence ||
-        abortController.signal.aborted ||
-        !mapRef.value
-      ) {
-        return;
-      }
+      await Promise.all(
+        Array.from({ length: MAP_POSTS_CONCURRENCY }, async (_, index) => {
+          let afterId = startId + index * rangeSize;
+          const throughId = Math.min(firstPage.throughId, afterId + rangeSize);
 
-      const nextAfterId = page.nextAfterId;
-      if (
-        nextAfterId !== null &&
-        (!Number.isSafeInteger(nextAfterId) || nextAfterId <= afterId)
-      ) {
-        throw new Error("Map post cursor did not advance.");
-      }
-
-      receivedFeatures.push(...page.features);
-      const isLastPage = nextAfterId === null;
-      let nextFeatures = [...receivedFeatures];
-
-      if (mergeWithExisting && !isLastPage) {
-        const mergedFeatureById = new Map(existingFeatureById);
-        for (const feature of receivedFeatures) {
-          const postId = getFeaturePostId(feature.properties);
-          if (postId) {
-            mergedFeatureById.set(postId, feature);
+          while (afterId < throughId && isCurrentRefresh()) {
+            const page = await loadPage(afterId, throughId);
+            if (!page || page.nextAfterId === null) {
+              return;
+            }
+            afterId = page.nextAfterId;
           }
-        }
-        nextFeatures = [...mergedFeatureById.values()].sort((left, right) => {
-          const leftPostId = getFeaturePostId(left.properties) || 0;
-          const rightPostId = getFeaturePostId(right.properties) || 0;
-          return leftPostId - rightPostId;
-        });
-      }
+        }),
+      );
+    }
 
-      collection.value = {
-        type: "FeatureCollection",
-        features: nextFeatures,
-      };
-
-      if (!appliedFirstPage) {
-        appliedFirstPage = true;
-        collectionQueryKey = queryKey;
-        previewGroupCache.clear();
-        pointHoverPreviewCache.clear();
-      }
-
-      closeActivePreview();
-      syncSelectionSource();
-      syncDisplaySource();
-
-      if (nextAfterId === null) {
-        lastMapSourceLoadedAt = Date.now();
-        break;
-      }
-
-      afterId = nextAfterId;
+    if (isCurrentRefresh()) {
+      applyCollection(true);
+      lastMapSourceLoadedAt = Date.now();
     }
   } catch (error) {
+    abortController.abort();
     if (isAbortError(error)) {
       return;
     }
@@ -1838,7 +1918,9 @@ const ensureRegionHighlightLayers = () => {
   }
 
   const sourceName = "region-highlight";
-  const beforeId = mapRef.value.getLayer("clusters") ? "clusters" : undefined;
+  const beforeId = mapRef.value.getLayer(POST_MARKER_LAYERS[0])
+    ? POST_MARKER_LAYERS[0]
+    : undefined;
   const fillColor = isDark.value
     ? "rgba(88, 199, 143, 0.12)"
     : "rgba(22, 146, 95, 0.1)";
@@ -1893,9 +1975,58 @@ const ensurePostLayers = () => {
   const sourceName = "posts";
   const primaryColor = isDark.value ? "#31a567" : "#248E55";
   const contrastColor = isDark.value ? "#0f120e" : "#f7f3ec";
+  const backgroundColor = isDark.value ? "#0b0b0b" : "#f1f1f1";
   const activeHaloColor = isDark.value
     ? "rgba(88, 199, 143, 0.24)"
     : "rgba(22, 146, 95, 0.2)";
+  const focusStrength: ExpressionSpecification = [
+    "coalesce", ["get", "focus_strength"], 1,
+  ];
+  // Opaque muted colors avoid alpha buildup, including during scale animations.
+  const markerOpacity: ExpressionSpecification = [
+    "case",
+    ["<", focusStrength, 1],
+    1,
+    ["coalesce", ["get", "marker_opacity"], 1],
+  ];
+  const markerColor: ExpressionSpecification = [
+    "interpolate", ["linear"], focusStrength,
+    0, backgroundColor,
+    1, primaryColor,
+  ];
+  const markerContrastColor: ExpressionSpecification = [
+    "interpolate", ["linear"], focusStrength,
+    0, backgroundColor,
+    1, contrastColor,
+  ];
+  const circlePaint: NonNullable<CircleLayerSpecification["paint"]> = {
+    "circle-radius": [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      POINT_MARKER_RADIUS_ZOOM_MIN,
+      [
+        "*",
+        POINT_MARKER_MIN_RADIUS_PX,
+        ["coalesce", ["get", "marker_scale"], 1],
+      ],
+      POINT_MARKER_RADIUS_ZOOM_MAX,
+      [
+        "*",
+        POINT_MARKER_FILL_RADIUS_PX,
+        ["coalesce", ["get", "marker_scale"], 1],
+      ],
+    ],
+    "circle-color": markerColor,
+    "circle-opacity": markerOpacity,
+    "circle-stroke-width": [
+      "*",
+      CLUSTER_BUBBLE_STROKE_WIDTH_PX,
+      ["coalesce", ["get", "marker_scale"], 1],
+    ],
+    "circle-stroke-color": markerContrastColor,
+    "circle-stroke-opacity": markerOpacity,
+  };
 
   if (!mapRef.value.getSource(sourceName)) {
     mapRef.value.addSource(sourceName, {
@@ -1911,96 +2042,43 @@ const ensurePostLayers = () => {
     });
   }
 
-  if (!mapRef.value.getLayer("clusters")) {
-    mapRef.value.addLayer({
-      id: "clusters",
-      type: "circle",
-      source: sourceName,
-      filter: ["has", "point_count"],
-      paint: {
-        "circle-radius": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          POINT_MARKER_RADIUS_ZOOM_MIN,
-          [
-            "*",
-            POINT_MARKER_MIN_RADIUS_PX,
-            ["coalesce", ["get", "marker_scale"], 1],
-          ],
-          POINT_MARKER_RADIUS_ZOOM_MAX,
-          [
-            "*",
-            POINT_MARKER_FILL_RADIUS_PX,
-            ["coalesce", ["get", "marker_scale"], 1],
-          ],
-        ],
-        "circle-color": primaryColor,
-        "circle-opacity": ["coalesce", ["get", "marker_opacity"], 1],
-        "circle-stroke-width": [
-          "*",
-          CLUSTER_BUBBLE_STROKE_WIDTH_PX,
-          ["coalesce", ["get", "marker_scale"], 1],
-        ],
-        "circle-stroke-color": contrastColor,
-        "circle-stroke-opacity": ["coalesce", ["get", "marker_opacity"], 1],
-      },
-    });
-  }
+  // Draw all muted markers and labels first, then all focused markers and labels.
+  for (const dimmed of [true, false]) {
+    const markerLayerId = POST_MARKER_LAYERS[dimmed ? 0 : 1];
+    const countLayerId = dimmed ? "muted-cluster-count" : "cluster-count";
+    const groupFilter: ExpressionSpecification = [
+      "==", ["<", focusStrength, 1], dimmed,
+    ];
 
-  if (!mapRef.value.getLayer("cluster-count")) {
-    mapRef.value.addLayer({
-      id: "cluster-count",
-      type: "symbol",
-      source: sourceName,
-      filter: ["has", "point_count"],
-      layout: {
-        "text-field": ["get", "point_count_abbreviated"],
-        "text-font": ["Noto Sans Medium"],
-        "text-size": 12,
-      },
-      paint: {
-        "text-color": contrastColor,
-        "text-opacity": ["coalesce", ["get", "marker_opacity"], 1],
-      },
-    });
-  }
+    if (!mapRef.value.getLayer(markerLayerId)) {
+      mapRef.value.addLayer({
+        id: markerLayerId,
+        type: "circle",
+        source: sourceName,
+        filter: groupFilter,
+        paint: circlePaint,
+      });
+    }
 
-  if (!mapRef.value.getLayer("unclustered-point")) {
-    mapRef.value.addLayer({
-      id: "unclustered-point",
-      type: "circle",
-      source: sourceName,
-      filter: ["!", ["has", "point_count"]],
-      paint: {
-        "circle-radius": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          POINT_MARKER_RADIUS_ZOOM_MIN,
-          [
-            "*",
-            POINT_MARKER_MIN_RADIUS_PX,
-            ["coalesce", ["get", "marker_scale"], 1],
-          ],
-          POINT_MARKER_RADIUS_ZOOM_MAX,
-          [
-            "*",
-            POINT_MARKER_FILL_RADIUS_PX,
-            ["coalesce", ["get", "marker_scale"], 1],
-          ],
-        ],
-        "circle-color": primaryColor,
-        "circle-opacity": ["coalesce", ["get", "marker_opacity"], 1],
-        "circle-stroke-width": [
-          "*",
-          CLUSTER_BUBBLE_STROKE_WIDTH_PX,
-          ["coalesce", ["get", "marker_scale"], 1],
-        ],
-        "circle-stroke-color": contrastColor,
-        "circle-stroke-opacity": ["coalesce", ["get", "marker_opacity"], 1],
-      },
-    });
+    if (!mapRef.value.getLayer(countLayerId)) {
+      mapRef.value.addLayer({
+        id: countLayerId,
+        type: "symbol",
+        source: sourceName,
+        filter: ["all", ["has", "point_count"], groupFilter],
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-font": ["Noto Sans Medium"],
+          "text-size": dimmed
+            ? ["*", 12, ["coalesce", ["get", "marker_scale"], 1]]
+            : 12,
+        },
+        paint: {
+          "text-color": markerContrastColor,
+          "text-opacity": markerOpacity,
+        },
+      });
+    }
   }
 
   if (!mapRef.value.getLayer("selected-post-ring")) {
@@ -2249,6 +2327,21 @@ const handlePreviewItemSelection = (postId: number) => {
   emit("select-post", postId);
 };
 
+const getInteractiveMarkerFeatures = (point: MapMouseEvent["point"]) => {
+  const features = mapRef.value?.queryRenderedFeatures(point, {
+    layers: [...POST_MARKER_LAYERS],
+  }) || [];
+
+  if (!props.focusUserId) {
+    return features;
+  }
+
+  const focusedFeatures = features.filter(
+    (feature) => feature.properties?.focus_strength === 1,
+  );
+  return focusedFeatures.length ? focusedFeatures : features;
+};
+
 const handleMapClick = async (event: MapMouseEvent) => {
   closePointHoverPreview();
 
@@ -2256,9 +2349,7 @@ const handleMapClick = async (event: MapMouseEvent) => {
     return;
   }
 
-  const markerFeatures = mapRef.value.queryRenderedFeatures(event.point, {
-    layers: ["clusters", "unclustered-point"],
-  });
+  const markerFeatures = getInteractiveMarkerFeatures(event.point);
 
   if (!markerFeatures.length) {
     closeActivePreview();
@@ -2266,7 +2357,7 @@ const handleMapClick = async (event: MapMouseEvent) => {
   }
 
   const clusterFeature = markerFeatures.find((feature) => {
-    return feature.layer.id === "clusters";
+    return Boolean(feature.properties?.cluster_group_id);
   });
 
   if (clusterFeature) {
@@ -2292,7 +2383,7 @@ const handleMapClick = async (event: MapMouseEvent) => {
   }
 
   const pointFeature = markerFeatures.find((feature) => {
-    return feature.layer.id === "unclustered-point";
+    return !feature.properties?.cluster_group_id;
   });
   const postId = getFeaturePostId(
     pointFeature?.properties as Record<string, unknown> | undefined,
@@ -2314,19 +2405,14 @@ const handleMarkerMouseLeave = () => {
   mapRef.value?.getCanvas().style.setProperty("cursor", "");
 };
 
-const handleClusterMouseEnter = () => {
-  closePointHoverPreview();
-  handleMarkerMouseEnter();
-};
-
 const handlePointMarkerMouseMove = (event: MapLayerMouseEvent) => {
   if (!mapRef.value || isMobileViewport.value) {
     closePointHoverPreview();
     return;
   }
 
-  const feature = event.features?.find(
-    (candidate) => candidate.layer.id === "unclustered-point",
+  const feature = getInteractiveMarkerFeatures(event.point).find(
+    (candidate) => !candidate.properties?.cluster_group_id,
   );
   const postId = getFeaturePostId(
     feature?.properties as Record<string, unknown> | undefined,
@@ -2363,15 +2449,9 @@ const bindMapInteractions = () => {
 
   mapInteractionsBound = true;
 
-  mapRef.value.on("mouseenter", "clusters", handleClusterMouseEnter);
-  mapRef.value.on("mouseleave", "clusters", handleMarkerMouseLeave);
-  mapRef.value.on("mouseenter", "unclustered-point", handleMarkerMouseEnter);
-  mapRef.value.on("mousemove", "unclustered-point", handlePointMarkerMouseMove);
-  mapRef.value.on(
-    "mouseleave",
-    "unclustered-point",
-    handlePointMarkerMouseLeave,
-  );
+  mapRef.value.on("mouseenter", POST_MARKER_LAYERS, handleMarkerMouseEnter);
+  mapRef.value.on("mousemove", POST_MARKER_LAYERS, handlePointMarkerMouseMove);
+  mapRef.value.on("mouseleave", POST_MARKER_LAYERS, handlePointMarkerMouseLeave);
 
   mapRef.value.on("click", handleMapClick);
   mapRef.value.on("dragstart", closeMapPreviews);
@@ -2384,15 +2464,9 @@ const unbindMapInteractions = () => {
     return;
   }
 
-  mapRef.value.off("mouseenter", "clusters", handleClusterMouseEnter);
-  mapRef.value.off("mouseleave", "clusters", handleMarkerMouseLeave);
-  mapRef.value.off("mouseenter", "unclustered-point", handleMarkerMouseEnter);
-  mapRef.value.off("mousemove", "unclustered-point", handlePointMarkerMouseMove);
-  mapRef.value.off(
-    "mouseleave",
-    "unclustered-point",
-    handlePointMarkerMouseLeave,
-  );
+  mapRef.value.off("mouseenter", POST_MARKER_LAYERS, handleMarkerMouseEnter);
+  mapRef.value.off("mousemove", POST_MARKER_LAYERS, handlePointMarkerMouseMove);
+  mapRef.value.off("mouseleave", POST_MARKER_LAYERS, handlePointMarkerMouseLeave);
   mapRef.value.off("click", handleMapClick);
   mapRef.value.off("dragstart", closeMapPreviews);
   mapRef.value.off("zoomstart", closeMapPreviews);
@@ -2402,17 +2476,15 @@ const unbindMapInteractions = () => {
 };
 
 const scheduleInitialSourceLoad = () => {
-  if (!import.meta.client || initialSourceLoadScheduled) {
+  if (!import.meta.client || initialSourceLoadScheduled || mapDisposed) {
     return;
   }
 
   initialSourceLoadScheduled = true;
-  startMapLoading();
-
-  window.requestAnimationFrame(() => {
-    void refreshSource({ loadingStarted: true }).finally(() => {
+  void refreshSource().finally(() => {
+    if (!mapDisposed) {
       initialSourceLoaded = true;
-    });
+    }
   });
 };
 
@@ -2549,6 +2621,7 @@ const handleMapIdle = () => {
 };
 
 const handleMapStyleLoad = () => {
+  mapStyleReady = true;
   scheduleMapRuntimeSync();
   scheduleBaseMapHealthCheck();
 };
@@ -2596,12 +2669,13 @@ const loadRegionHighlight = async (scope: RegionScope | null) => {
 };
 
 const syncMapRuntimeState = () => {
-  if (!mapRef.value || !mapRef.value.isStyleLoaded()) {
+  if (!mapRef.value || (!mapStyleReady && !mapRef.value.isStyleLoaded())) {
     return;
   }
 
   scheduleMapResize();
   setupMapLayers();
+  scheduleDisplaySourceSync();
   bindMapInteractions();
   syncRegionHighlightSource();
   syncSelectionSource();
@@ -2788,11 +2862,16 @@ onMounted(async () => {
   }
 
   updateViewportWidth();
+  scheduleInitialSourceLoad();
   startMapLoading();
   try {
     maplibregl = await import("maplibre-gl");
     await registerPmtilesProtocol(maplibregl);
     const style = await fetchInitialMapStyle();
+
+    if (mapDisposed) {
+      return;
+    }
 
     prepareBaseMapForStyleLoad();
     mapRef.value = new maplibregl.Map({
@@ -2806,11 +2885,11 @@ onMounted(async () => {
     scheduleMapResize();
     scheduleBaseMapHealthCheck();
   } catch {
-    finishMapLoading();
+    mapPostsAbortController?.abort();
     return;
+  } finally {
+    finishMapLoading();
   }
-
-  finishMapLoading();
 
   window.addEventListener("focus", scheduleVisibleMapSourceRefresh);
   window.addEventListener("resize", handleWindowResize);
@@ -2819,7 +2898,7 @@ onMounted(async () => {
     scheduleVisibleMapSourceRefresh,
   );
 
-  mapRef.value.on("load", handleMapStyleLoad);
+  mapRef.value.on("style.load", handleMapStyleLoad);
   mapRef.value.on("styledata", scheduleMapRuntimeSync);
   mapRef.value.on("sourcedataloading", startBaseMapTileLoading);
   mapRef.value.on("sourcedata", handleBaseMapSourceData);
@@ -2832,7 +2911,6 @@ onMounted(async () => {
 
   mapRef.value.on("load", () => {
     scheduleMapRuntimeSync();
-    scheduleInitialSourceLoad();
     scheduleBaseMapHealthCheck();
 
     if (props.selectedPostId) {
@@ -2855,7 +2933,7 @@ watch(
 );
 
 watch(
-  () => props.filterUserId,
+  () => props.focusUserId,
   () => {
     closePointHoverPreview();
     closeActivePreview();
@@ -2877,7 +2955,7 @@ watch(
 watch(
   () => selectedCharacterSlugs.value.join(","),
   () => {
-    if (mapRef.value) {
+    if (initialSourceLoadScheduled && !mapDisposed) {
       void refreshSource();
     }
   },
@@ -2912,6 +2990,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  mapDisposed = true;
   mapStyleSequence += 1;
   refreshSourceSequence += 1;
   previewRequestSequence += 1;
@@ -2951,6 +3030,7 @@ onBeforeUnmount(() => {
   );
   unbindMapInteractions();
   mapRef.value?.remove();
+  mapRef.value = null;
 });
 </script>
 
