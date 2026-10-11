@@ -311,6 +311,10 @@ const createWebpUploadFile = async (file: File) => {
     throw new Error(t('submit.errors.thumbnailFailed'))
   }
 
+  if (blob.type !== 'image/webp' || blob.size > file.size) {
+    return file
+  }
+
   const baseName = file.name.replace(/\.[^.]+$/, '') || 'original'
   return new File([blob], `${baseName}.webp`, {
     type: 'image/webp'
@@ -341,7 +345,7 @@ const createThumbnail = async (file: File) => {
     canvas.toBlob(resolve, 'image/webp', Math.max(0.62, getAdaptiveWebpQuality(file.size) - 0.06))
   })
 
-  if (!blob) {
+  if (!blob || blob.type !== 'image/webp') {
     throw new Error(t('submit.errors.thumbnailFailed'))
   }
 
