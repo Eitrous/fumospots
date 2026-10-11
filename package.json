@@ -1,7 +1,8 @@
 {
-  "name": "fumotravel",
+  "name": "fumospots",
   "type": "module",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
